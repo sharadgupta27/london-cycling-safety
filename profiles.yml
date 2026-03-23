@@ -1,0 +1,30 @@
+london_cycling:
+  target: dev   # default for local use; pass --target prod explicitly for BigQuery
+
+  outputs:
+
+    # ── Local development (DuckDB) ────────────────────────────────────────────
+    dev:
+      type: duckdb
+      path: london_cycling.duckdb
+      threads: 4
+
+    # ── Production (Google BigQuery) ─────────────────────────────────────────
+    # Credentials come from .env (loaded by run_pipeline.py / orchestration/pipeline.py).
+    # Required env vars (set in .env):
+    #   GCP_PROJECT_ID                  – your GCP project
+    #   GCP_BQ_DATASET                  – target dataset (e.g. dbt_london_cycling)
+    #   GCP_BQ_LOCATION                 – dataset location (e.g. EU, europe-west2)
+    #   GOOGLE_APPLICATION_CREDENTIALS  – path to your service-account JSON key
+    prod:
+      type: bigquery
+      method: service-account
+      project:  "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset:  "{{ env_var('GCP_BQ_DATASET', 'dbt_london_cycling') }}"
+      location: "{{ env_var('GCP_BQ_LOCATION', 'EU') }}"
+      keyfile:  "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      threads: 8
+      timeout_seconds: 600
+      job_labels:
+        project: london-cycling-safety
+        managed-by: dbt

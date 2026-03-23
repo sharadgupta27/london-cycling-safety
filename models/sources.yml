@@ -1,0 +1,68 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw tables loaded by dlt ingestion pipelines"
+    schema: raw
+    tables:
+      - name: tfl_journeys
+        description: "TFL Santander cycle hire journey records"
+        columns:
+          - name: rental_id
+            description: "Unique journey identifier"
+            tests: [not_null, unique]
+          - name: start_station_id
+            tests: [not_null]
+          - name: end_station_id
+            tests:
+              - not_null:
+                  severity: warn   # TFL occasionally omits end station (bike moved by staff)
+          - name: duration_seconds
+            description: "Journey duration in seconds"
+
+      - name: tfl_stations
+        description: "TFL Santander docking station locations"
+        columns:
+          - name: station_id
+            tests: [not_null, unique]
+          - name: longitude
+            description: "Station longitude (WGS84)"
+          - name: latitude
+            description: "Station latitude (WGS84)"
+
+      - name: uk_accidents
+        description: "UK STATS19 road accident records (London filtered)"
+        columns:
+          - name: collision_index
+            tests: [not_null, unique]
+          - name: longitude
+            description: "Accident longitude"
+          - name: latitude
+            description: "Accident latitude"
+          - name: collision_severity
+            description: "1=Fatal 2=Serious 3=Slight"
+            tests:
+              - accepted_values:
+                  values: [1, 2, 3]
+                  quote: false
+
+      - name: uk_casualties
+        description: "UK STATS19 casualty records"
+
+      - name: uk_vehicles
+        description: "UK STATS19 vehicle records"
+
+  - name: spatial_layer
+    description: "DuckDB spatial transform outputs"
+    schema: spatial_layer
+    tables:
+      - name: accidents_geo
+        description: "Accidents with GEOMETRY points"
+      - name: stations_geo
+        description: "Bike stations with GEOMETRY points"
+      - name: station_blackspot_scores
+        description: "Per-station accident proximity scores"
+      - name: corridor_risk
+        description: "Corridor composite risk scores"
+      - name: monthly_accident_trend
+        description: "Monthly accident trend"

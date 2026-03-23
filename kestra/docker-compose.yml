@@ -1,0 +1,148 @@
+# ==============================================================================
+# Kestra Orchestration – London Cycling Safety Pipeline
+# ==============================================================================
+#
+# Start:   cd london-cycling-safety/kestra && docker compose up -d
+# UI:      http://localhost:8888
+# Stop:    docker compose down
+# Purge:   docker compose down -v      (removes Postgres data + Kestra storage)
+#
+# Prerequisites:
+#   1. Docker Desktop running on Windows (WSL2 backend recommended)
+#   2. Copy .env.example → .env and set LONDON_PROJECT_PATH
+#      and CREDENTIALS_PATH for your machine.
+#
+# How it works:
+#   Kestra's Docker runner communicates with the HOST Docker daemon via the
+#   Docker socket.  When a flow task runs, Kestra spawns a fresh Python or
+#   dbt container on the HOST.  The plugin.defaults block below automatically
+#   bind-mounts the project directory and credentials into every spawned
+#   container, so your existing scripts run unmodified.
+#
+# Variable substitution:
+#   Docker Compose replaces ${LONDON_PROJECT_PATH} and ${CREDENTIALS_PATH}
+#   (from .env) into the KESTRA_CONFIGURATION string before the
+#   container starts.  Kestra then reads those absolute host paths and passes
+#   them to each spawned container as Docker bind-mounts.
+# ==============================================================================
+
+networks:
+  kestra-net:
+    driver: bridge
+
+volumes:
+  kestra-storage:          # flow run artefacts (logs, outputs)
+  postgres-data:           # Kestra metadata / execution history
+
+services:
+
+  # ── PostgreSQL – Kestra metadata store ────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: kestra-postgres
+    networks: [kestra-net]
+    environment:
+      POSTGRES_DB: kestra
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: kestra_pass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kestra"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Kestra standalone server ───────────────────────────────────────────────
+  kestra:
+    image: kestra/kestra:latest-full   # "full" image includes all plugins
+    container_name: kestra-server
+    pull_policy: if_not_present
+    user: "root"    # needed: write access to kestra-storage volume + Docker socket
+    networks: [kestra-net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: server standalone
+    ports:
+      - "8888:8080"   # Kestra UI  → http://localhost:8888
+      - "8889:8081"   # Kestra API (optional direct access)
+    volumes:
+      # Internal storage for execution outputs, logs and artefacts
+      - kestra-storage:/app/storage
+      # Docker socket: Kestra uses the HOST Docker daemon to spawn task containers.
+      # Windows (Docker Desktop): the socket is proxied by Docker Desktop.
+      # If using Docker Desktop on Windows, this path works out-of-the-box.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    # .env supplies LONDON_PROJECT_PATH, CREDENTIALS_PATH, and other
+    # values that are interpolated into KESTRA_CONFIGURATION by Docker Compose.
+    # Docker Compose also auto-loads .env for ${VAR} substitution in this YAML.
+    env_file:
+      - .env
+
+    environment:
+      # ── Kestra configuration (YAML embedded in an env var) ─────────────────
+      # Docker Compose performs ${VAR} substitution here using values from
+      # .kestra.env before passing the string to the container.
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://postgres:5432/kestra
+            driverClassName: org.postgresql.Driver
+            username: kestra
+            password: kestra_pass
+
+        kestra:
+          anonymousUsageReport:
+            enabled: false
+
+          repository:
+            type: postgres
+
+          storage:
+            type: local
+            local:
+              base-path: /app/storage
+
+          queue:
+            type: postgres
+
+          server:
+            basicAuth:
+              enabled: false    # Set to true + add credentials for production
+            httpPort: 8888
+
+          tasks:
+            tmpDir:
+              path: /tmp/kestra-wd    # working dir for task containers
+
+          # ── Plugin defaults ────────────────────────────────────────────────
+          # These settings are automatically merged into EVERY task of the
+          # matching type.  We use them to mount the project and credentials
+          # into every Docker container that Kestra spawns.
+          #
+          # IMPORTANT: the volume paths here are HOST-absolute paths because
+          # Kestra's Docker runner talks to the HOST Docker daemon.
+          # Docker Compose expands ${LONDON_PROJECT_PATH} and
+          # ${CREDENTIALS_PATH} from .env before the container starts.
+          plugins:
+            defaults:
+              - type: io.kestra.plugin.scripts.python.Commands
+                values:
+                  runner: DOCKER
+                  docker:
+                    volumes:
+                      - "${LONDON_PROJECT_PATH}:/app"
+                      - "${CREDENTIALS_PATH}:/credentials:ro"
+
+              - type: io.kestra.plugin.scripts.shell.Commands
+                values:
+                  runner: DOCKER
+                  docker:
+                    volumes:
+                      - "${LONDON_PROJECT_PATH}:/app"
+                      - "${CREDENTIALS_PATH}:/credentials:ro"
+
+    restart: unless-stopped

@@ -1,0 +1,86 @@
+# pyproject.toml – unified tool configuration
+# ============================================================
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    ".venv", "target", "dbt_packages", ".git",
+    "__pycache__", "*.egg-info",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long – black handles this
+    "B008",  # do not perform function calls in default arguments
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]   # allow assert in tests
+
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+exclude = '''
+/(
+    \.venv
+  | target
+  | dbt_packages
+)/
+'''
+
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = [
+    "ingestion",
+    "transforms",
+    "dashboard",
+]
+skip_glob = [".venv/*", "target/*", "dbt_packages/*"]
+
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
+exclude = [
+    "target/",
+    "dbt_packages/",
+    ".venv/",
+]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+
+[tool.coverage.run]
+source = ["ingestion", "transforms", "dashboard", "run_pipeline"]
+omit   = ["tests/*", ".venv/*", "target/*", "dbt_packages/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under   = 60

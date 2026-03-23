@@ -1,0 +1,4 @@
+# dbt_utils removed: it caused recursive self-installation on Windows
+# (integration_tests/packages.yml references dbt_utils again, looping forever).
+# All transforms in this project use native DuckDB SQL; no dbt_utils macros needed.
+packages: []
