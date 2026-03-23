@@ -8,14 +8,14 @@
 ::   3. Run dbt build --target prod             (BigQuery GIS)
 ::
 :: Prerequisites:
-::   - Python venv at <dataengg_local>\.venv  (or project-local .venv)
+::   - Python venv at <parent_dir>\.venv  (or project-local .venv)
 ::   - .env file with GCP_PROJECT_ID, GCP_BQ_DATASET, GCP_BQ_LOCATION,
 ::     GOOGLE_APPLICATION_CREDENTIALS
 ::   - credentials\service_account.json  (your GCP JSON key)
 ::
 :: .venv search order:
-::   1. <dataengg_local>\.venv  (shared workspace venv, one level up)
-::   2. <project>\.venv         (project-local venv, created if missing)
+::   1. <parent_dir>\.venv  (shared venv in parent directory, one level up)
+::   2. <project>\.venv    (project-local venv, created if missing)
 :: ============================================================
 
 setlocal EnableDelayedExpansion
@@ -24,13 +24,13 @@ set "PROJECT_DIR=%~dp0"
 if "%PROJECT_DIR:~-1%"=="\" set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
 
 :: ── Resolve .venv: workspace-level venv wins over project-local ──────────────
-for %%I in ("%PROJECT_DIR%\..") do set "DATAENGG_LOCAL=%%~fI"
-set "HOME_VENV=%DATAENGG_LOCAL%\.venv"
+for %%I in ("%PROJECT_DIR%\..") do set "PARENT_DIR=%%~fI"
+set "HOME_VENV=%PARENT_DIR%\.venv"
 set "PROJECT_VENV=%PROJECT_DIR%\.venv"
 
 if exist "%HOME_VENV%\Scripts\python.exe" (
     set "VENV_DIR=%HOME_VENV%"
-    set "VENV_SOURCE=workspace directory (%DATAENGG_LOCAL%\.venv)"
+    set "VENV_SOURCE=parent directory (%PARENT_DIR%\.venv)"
 ) else (
     set "VENV_DIR=%PROJECT_VENV%"
     set "VENV_SOURCE=project directory (.venv)"

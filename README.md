@@ -226,6 +226,12 @@ The defaults in `.env.example` work without any changes for a local run.
 python run_pipeline.py
 ```
 
+> **Windows shortcut:** `run_all.bat` (in the project root) automates Steps 2–6 in a single double-click — it locates or creates the `.venv`, installs all dependencies, runs the full pipeline, and opens the Streamlit dashboard at http://localhost:8501.
+>
+> ```bat
+> run_all.bat
+> ```
+
 This runs in sequence:
 
 1. `ingestion/ingest_tfl_cycling.py` — downloads TFL journey + station data via dlt → `london_cycling.duckdb`
@@ -309,6 +315,16 @@ uv pip install -r requirements.txt
 python orchestration/pipeline.py --target prod
 ```
 
+> **Windows shortcut:** `run_prod.bat` (in the project root) wraps this step — it installs BigQuery extras, validates `.env` and credentials, and runs the production pipeline.
+> The `.venv` must already exist; if not, run `run_all.bat` once first to create it.
+>
+> ```bat
+> run_prod.bat
+>
+> :: Re-run dbt only (skip TFL + STATS19 ingest):
+> run_prod.bat --skip-ingest
+> ```
+
 This runs in sequence:
 
 1. **Credential check** — verifies `GOOGLE_APPLICATION_CREDENTIALS` file exists
@@ -346,17 +362,10 @@ make schedule
 
 **Option 2 - Windows Task Scheduler:**
 
-1. Create `run_prod_pipeline.bat`:
-
-   ```bat
-   @echo off
-   call C:\path\to\.venv\Scripts\activate.bat
-   python C:\path\to\orchestration\pipeline.py --target prod >> pipeline.log 2>&1
-   ```
-
+1. `run_prod.bat` (already in the repo root) is the production runner — no need to create a new file.
 2. Open **Task Scheduler** → Create Basic Task → name it `London Cycling Pipeline`
 3. Trigger: **Weekly** → Monday → 03:00
-4. Action: **Start a program** → point to `run_prod_pipeline.bat`
+4. Action: **Start a program** → point to `run_prod.bat` in the `london-cycling-safety` folder
 
 **Option 3 - Linux / macOS cron:**
 
