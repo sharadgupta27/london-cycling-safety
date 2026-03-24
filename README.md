@@ -110,6 +110,10 @@ london-cycling-safety/
 ├── .env.example                     ← copy to .env and fill in values
 ├── run_pipeline.py                  ← single entry-point: ingest → transform → dbt
 │
+├── Step1_setup.bat                  ← Windows: create .venv, install deps, create .env
+├── Step2_run_dev.bat                ← Windows: run local DuckDB pipeline + dashboard
+├── Step2_run_prod.bat               ← Windows: run production BigQuery pipeline
+│
 ├── dbt_project.yml                  ← dbt project config
 ├── profiles.yml                     ← dbt profiles: dev (DuckDB) + prod (BigQuery)
 ├── packages.yml                     ← dbt package dependencies
@@ -226,10 +230,14 @@ The defaults in `.env.example` work without any changes for a local run.
 python run_pipeline.py
 ```
 
-> **Windows shortcut:** `run_all.bat` (in the project root) automates Steps 2–6 in a single double-click — it locates or creates the `.venv`, installs all dependencies, runs the full pipeline, and opens the Streamlit dashboard at http://localhost:8501.
+> **Windows shortcut — two-step batch workflow:**
+>
+> 1. Run `Step1_setup.bat` once (after cloning) to create the `.venv`, install dependencies, and create `.env`.
+> 2. Then run `Step2_run_dev.bat` to execute the local pipeline and open the Streamlit dashboard.
 >
 > ```bat
-> run_all.bat
+> Step1_setup.bat      :: first-time setup (run once)
+> Step2_run_dev.bat    :: ingest + transforms + dbt build + launch dashboard
 > ```
 
 This runs in sequence:
@@ -315,14 +323,18 @@ uv pip install -r requirements.txt
 python orchestration/pipeline.py --target prod
 ```
 
-> **Windows shortcut:** `run_prod.bat` (in the project root) wraps this step — it installs BigQuery extras, validates `.env` and credentials, and runs the production pipeline.
-> The `.venv` must already exist; if not, run `run_all.bat` once first to create it.
+> **Windows shortcut — two-step batch workflow:**
+>
+> 1. Run `Step1_setup.bat` once (after cloning) to set up the `.venv` and create `.env`.
+> 2. Edit `.env` with your GCP credentials (see Step 2 above).
+> 3. Then run `Step2_run_prod.bat` to execute the production pipeline.
 >
 > ```bat
-> run_prod.bat
+> Step1_setup.bat          :: first-time setup (run once)
+> Step2_run_prod.bat       :: install BigQuery extras, validate credentials, run pipeline
 >
 > :: Re-run dbt only (skip TFL + STATS19 ingest):
-> run_prod.bat --skip-ingest
+> Step2_run_prod.bat --skip-ingest
 > ```
 
 This runs in sequence:
@@ -362,10 +374,10 @@ make schedule
 
 **Option 2 - Windows Task Scheduler:**
 
-1. `run_prod.bat` (already in the repo root) is the production runner — no need to create a new file.
+1. `Step2_run_prod.bat` (in the repo root) is the production runner — run `Step1_setup.bat` once first to ensure the venv exists.
 2. Open **Task Scheduler** → Create Basic Task → name it `London Cycling Pipeline`
 3. Trigger: **Weekly** → Monday → 03:00
-4. Action: **Start a program** → point to `run_prod.bat` in the `london-cycling-safety` folder
+4. Action: **Start a program** → point to `Step2_run_prod.bat` in the `london-cycling-safety` folder
 
 **Option 3 - Linux / macOS cron:**
 

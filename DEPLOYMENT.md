@@ -15,7 +15,10 @@ Step-by-step instructions for anyone to run this project locally or deploy it in
    - 4.3 Run the full pipeline
    - 4.4 Run individual stages
    - 4.5 Launch the dashboard
-5. [One-Click Run (Windows)](#5-one-click-run-windows)
+5. [Windows Batch File Workflow](#5-windows-batch-file-workflow)
+   - 5.1 Step 1 — Environment setup (`Step1_setup.bat`)
+   - 5.2 Step 2A — Development pipeline (`Step2_run_dev.bat`)
+   - 5.3 Step 2B — Production pipeline (`Step2_run_prod.bat`)
 6. [Production — BigQuery](#6-production--bigquery)
    - 6.1 GCP prerequisites
    - 6.2 Configure `.env` and credentials
@@ -220,27 +223,85 @@ Open **http://localhost:8501** in your browser.
 
 ---
 
-## 5. One-Click Run (Windows)
+## 5. Windows Batch File Workflow
 
-The fastest way to run the full pipeline and open the dashboard is the included batch file.
+Three batch files in the project root provide a clear, step-by-step workflow for Windows users.
+Run them **in order**: setup first, then whichever pipeline you need.
 
-**Double-click** `run_all.bat` in the project root, or from a terminal:
-
-```bat
-run_all.bat
+```
+Step1_setup.bat        ← run once (or after a clean clone)
+    │
+    ├─▶  Step2_run_dev.bat   ← local pipeline (DuckDB, no cloud account needed)
+    └─▶  Step2_run_prod.bat  ← production pipeline (Google BigQuery)
 ```
 
-What it does automatically:
+---
+
+### 5.1 Step 1 — Environment setup (`Step1_setup.bat`)
+
+**Double-click** `Step1_setup.bat`, or from a terminal:
+
+```bat
+Step1_setup.bat
+```
+
+What it does:
 
 | Step | Action |
 |---|---|
-| 1 | Checks Python is on PATH |
-| 2 | Creates `.venv` if missing, installs `requirements.txt` using `uv` |
-| 3 | Copies `.env.example` → `.env` if no `.env` exists |
-| 4 | Runs `run_pipeline.py` (ingest + transforms + `dbt build`) |
-| 5 | Launches Streamlit dashboard at **http://localhost:8501** |
+| 1 | Checks Python 3.11+ is on PATH |
+| 2 | Locates an existing `.venv` one level up; creates a project-local `.venv` if none is found |
+| 3 | Installs all Python dependencies from `requirements.txt` using `uv` |
+| 4 | Copies `.env.example` → `.env` if no `.env` exists yet |
+
+Run this **once after cloning**, or again whenever `requirements.txt` changes.
+
+---
+
+### 5.2 Step 2A — Development pipeline (`Step2_run_dev.bat`)
+
+Runs the full local (DuckDB) pipeline and launches the Streamlit dashboard.  
+**No cloud account required.**
+
+```bat
+Step2_run_dev.bat
+```
+
+What it does:
+
+| Step | Action |
+|---|---|
+| 1 | Ingests TFL + STATS19 data via dlt → local DuckDB |
+| 2 | Runs DuckDB spatial transforms (blackspot scores, corridor geometry) |
+| 3 | Runs `dbt build` — seeds → staging → intermediate → marts + tests |
+| 4 | Launches Streamlit dashboard at **http://localhost:8501** |
 
 > Press **Ctrl+C** in the terminal window to stop the dashboard when done.
+
+---
+
+### 5.3 Step 2B — Production pipeline (`Step2_run_prod.bat`)
+
+Runs the full production pipeline writing to Google BigQuery.  
+**Requires GCP credentials** — see §6 for setup.
+
+```bat
+Step2_run_prod.bat
+```
+
+Optional flag to skip ingestion and re-run only dbt:
+
+```bat
+Step2_run_prod.bat --skip-ingest
+```
+
+What it does:
+
+| Step | Action |
+|---|---|
+| 1 | Installs BigQuery extras (`dlt[bigquery]`, `dbt-bigquery`) into the venv |
+| 2 | Validates `.env` exists and warns if `credentials\service_account.json` is missing |
+| 3 | Runs `orchestration/pipeline.py --target prod` (ingest → BigQuery + dbt build) |
 
 ---
 
@@ -304,10 +365,10 @@ GCP_BQ_LOCATION=EU
 
 ### 6.3 Run the production pipeline
 
-**Windows — double-click** `run_prod.bat`, or from a terminal:
+**Windows — double-click** `Step2_run_prod.bat` (after running `Step1_setup.bat` once), or from a terminal:
 
 ```bat
-run_prod.bat
+Step2_run_prod.bat
 ```
 
 Or use Python directly / Makefile:
@@ -509,6 +570,9 @@ london-cycling-safety/
 ├── run_pipeline.py                 # single entry point for all stages
 ├── requirements.txt                # Python dependencies (local dev)
 ├── .env.example                    # environment variable template
+├── Step1_setup.bat                 # Windows: set up venv + install deps
+├── Step2_run_dev.bat               # Windows: run local DuckDB pipeline + dashboard
+├── Step2_run_prod.bat              # Windows: run production BigQuery pipeline
 └── DEPLOYMENT.md                   # ← you are here
 ```
 
@@ -556,7 +620,7 @@ DBT_PACKAGES_PATH=C:/Temp/dbt_packages_london_cycling
 The DuckDB file may not have been built yet. Run the pipeline first:
 ```bash
 python run_pipeline.py
-# or double-click run_all.bat
+# Windows: Step1_setup.bat, then Step2_run_dev.bat
 ```
 Then start the dashboard separately:
 ```bash
