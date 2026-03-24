@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================
-:: London Cycling Safety — Step 2: Production Pipeline (BigQuery)
+:: London Cycling Safety - Step 2: Production Pipeline (BigQuery)
 :: ============================================================
 :: Prerequisite: run Step1_setup.bat at least once first.
 ::
@@ -52,7 +52,7 @@ set "STREAMLIT_EXE=%VENV_DIR%\Scripts\streamlit.exe"
 
 echo.
 echo ============================================================
-echo  London Cycling Safety — Step 2: Production Pipeline (BigQuery)
+echo  London Cycling Safety - Step 2: Production Pipeline (BigQuery)
 echo ============================================================
 echo  Project: %PROJECT_DIR%
 echo.
