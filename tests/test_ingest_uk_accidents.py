@@ -166,7 +166,7 @@ class TestDownloadStats19:
             df = _download_stats19("https://fake.url/accidents.csv", "accidents")
         assert all(c == c.lower() for c in df.columns)
 
-    def test_accident_reference_renamed_to_accident_index(self):
+    def test_accident_reference_renamed_to_collision_index(self):
         csv_text = textwrap.dedent("""\
             accident_reference,longitude,latitude,accident_severity
             2024C001,-0.12,51.50,1
@@ -178,7 +178,7 @@ class TestDownloadStats19:
         mock_resp.iter_content.return_value = [csv_text]
         with patch("ingestion.ingest_uk_accidents.requests.get", return_value=mock_resp):
             df = _download_stats19("https://fake.url/collision.csv", "accidents")
-        assert "accident_index" in df.columns
+        assert "collision_index" in df.columns
         assert "accident_reference" not in df.columns
 
     def test_returns_none_on_http_error(self):

@@ -64,8 +64,6 @@ st.sidebar.markdown("""
   <div style="color:#333; font-size:0.66rem; text-align:center;">Station risk scores · heatmap</div>
 </div>
 """, unsafe_allow_html=True)
-st.sidebar.page_link("app.py", label="🏠 Home", use_container_width=True)
-st.sidebar.markdown("<hr style='border-color:#222; margin:0.4rem 0;'>", unsafe_allow_html=True)
 st.sidebar.markdown(
     '<p style="text-transform:uppercase;letter-spacing:0.07em;font-size:0.72rem;'
     'color:#FF9800;font-weight:700;margin-bottom:0.4rem;">FILTERS</p>',
@@ -131,7 +129,7 @@ with map_col:
         "Decile 1–3 – Lowest": "#006837",
     })
     folium.LayerControl(position="topright", collapsed=False).add_to(m)
-    st_folium(m, width="100%", height=520, returned_objects=[])
+    st_folium(m, width="100%", height=600, returned_objects=[])
 
 with side_col:
     st.markdown(
@@ -155,7 +153,7 @@ with side_col:
                 f'Accidents: {int(row.get("nearby_accident_count", 0))} &nbsp;·&nbsp; '
                 f'Decile {decile}</div></div></div>'
             )
-        st.markdown(f'<div class="incident-list">{items_html}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="incident-list" style="height:340px;overflow-y:auto;">{items_html}</div>', unsafe_allow_html=True)
     else:
         st.markdown(
             '<div style="color:#555;font-size:0.82rem;padding:0.8rem 0;">'
@@ -176,7 +174,7 @@ with side_col:
                 showlegend=False,
                 title_text="Risk Score Distribution",
                 title_font_size=11,
-                height=230,
+                height=200,
                 margin=dict(l=4, r=4, t=28, b=28),
             )
         )

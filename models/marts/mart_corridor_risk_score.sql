@@ -1,5 +1,7 @@
 -- marts/mart_corridor_risk_score.sql
 -- Final mart: corridors ranked by composite risk score.
+-- composite_risk_score = severity-weighted crashes per million journey-km
+--   (exposure-normalised rate; journey_count used as AADT proxy)
 -- Used by the Corridor Risk dashboard page.
 
 {{

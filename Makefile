@@ -17,6 +17,21 @@
 #   make schedule            Start weekly BigQuery scheduler
 #   make clean               Remove generated caches and build artefacts
 #   make all                 lint + format-check + test (useful for CI)
+#
+# Docker shortcuts:
+#   make dev-up              Build image + start all dev services (DuckDB)
+#   make dev-run             Run the pipeline once in dev Docker stack
+#   make dev-down            Stop and remove dev containers
+#   make prod-up             Build image + start all prod services (BigQuery)
+#   make prod-run            Run the pipeline once in prod Docker stack
+#   make prod-down           Stop and remove prod containers
+#   make docker-build        Build (or rebuild) the Python image only
+#   make docker-logs         Tail logs for all running services
+#
+# Airflow shortcuts:
+#   make airflow-up          Build Airflow image + start webserver + scheduler
+#   make airflow-down        Stop and remove Airflow containers
+#   make airflow-logs        Tail Airflow logs
 # ============================================================
 
 PYTHON     ?= python
@@ -25,8 +40,18 @@ SRC_DIRS   := ingestion transforms dashboard run_pipeline.py
 TEST_DIR   := tests
 LINE_LEN   := 100
 
+# Docker Compose file pairs
+DC_BASE    := docker-compose.yml
+DC_DEV     := docker-compose.dev.yml
+DC_PROD    := docker-compose.prod.yml
+DC_DEV_CMD := docker compose -f $(DC_BASE) -f $(DC_DEV)
+DC_PROD_CMD:= docker compose -f $(DC_BASE) -f $(DC_PROD)
+
 .PHONY: all install lint format format-check test test-cov type-check clean \
-        pipeline pipeline-prod pipeline-prod-no-ingest schedule
+        pipeline pipeline-prod pipeline-prod-no-ingest schedule \
+        dev-up dev-run dev-down prod-up prod-run prod-down \
+        docker-build docker-logs \
+        airflow-up airflow-down airflow-logs
 
 # ────────────────────────────────────────────────────────────
 # Default target
@@ -108,3 +133,62 @@ pipeline-prod-no-ingest:
 
 schedule:
 	$(PYTHON) orchestration/schedule_pipeline.py --target prod
+
+# ────────────────────────────────────────────────────────────
+# Docker – Development stack (DuckDB, no GCP credentials needed)
+# ────────────────────────────────────────────────────────────
+dev-up:
+	$(DC_DEV_CMD) up -d --build
+	@echo "  [OK] Dev stack is up."
+	@echo "  Streamlit Dashboard  -->  http://localhost:8501"
+	@echo "  Airflow UI (if running) --> http://localhost:8080  (run: make airflow-up)"
+
+dev-run:
+	$(DC_DEV_CMD) run --rm pipeline
+
+dev-down:
+	$(DC_DEV_CMD) down
+
+# ────────────────────────────────────────────────────────────
+# Docker – Production stack (BigQuery)
+# ────────────────────────────────────────────────────────────
+prod-up:
+	$(DC_PROD_CMD) up -d --build
+	@echo "  [OK] Production stack is up."
+	@echo "  Streamlit Dashboard  -->  http://localhost:8501"
+	@echo "  Airflow UI (if running) --> http://localhost:8080  (run: make airflow-up)"
+
+prod-run:
+	$(DC_PROD_CMD) run --rm --build pipeline
+
+prod-down:
+	$(DC_PROD_CMD) down
+
+# ────────────────────────────────────────────────────────────
+# Docker – Utilities
+# ────────────────────────────────────────────────────────────
+docker-build:
+	docker build -t london-cycling-safety:latest .
+
+docker-logs:
+	$(DC_DEV_CMD) logs -f
+
+# ────────────────────────────────────────────────────────────
+# Airflow – Orchestration stack (webserver + scheduler)
+# UI: http://localhost:8080  (admin / admin)
+# ────────────────────────────────────────────────────────────
+airflow-up:
+	docker build -t london-cycling-airflow:latest -f Dockerfile.airflow .
+	docker compose -f airflow/docker-compose.yml up -d
+	@echo "  [OK] Airflow stack is up."
+	@echo "  Airflow UI  -->  http://localhost:8080  (admin / admin)"
+
+# Wait a moment for the init service to finish, then show status
+airflow-init:
+	docker compose -f airflow/docker-compose.yml run --rm airflow-init
+
+airflow-down:
+	docker compose -f airflow/docker-compose.yml down
+
+airflow-logs:
+	docker compose -f airflow/docker-compose.yml logs -f

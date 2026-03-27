@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================
-:: London Cycling Safety — Project Cleaner (Windows)
+:: London Cycling Safety - Project Cleaner (Windows)
 :: ============================================================
 :: Removes all generated / temporary artefacts:
 ::   • DuckDB database  (london_cycling.duckdb)
@@ -21,7 +21,7 @@ if "%PROJECT_DIR:~-1%"=="\" set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
 
 echo.
 echo ============================================================
-echo  London Cycling Safety — Clean
+echo  London Cycling Safety - Clean
 echo ============================================================
 echo  Project: %PROJECT_DIR%
 echo.

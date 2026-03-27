@@ -22,6 +22,7 @@ import io
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Iterator
 
@@ -39,6 +40,9 @@ load_dotenv(PROJECT_ROOT / ".env")
 DUCKDB_PATH = os.getenv("DUCKDB_PATH", "london_cycling.duckdb")
 ACCIDENT_YEARS_RAW = os.getenv("ACCIDENT_YEARS", "2022,2023,2024")
 ACCIDENT_YEARS = [y.strip() for y in ACCIDENT_YEARS_RAW.split(",")]
+
+# Rows per DataFrame chunk yielded to dlt (controls BQ upload batch granularity)
+_CHUNK_SIZE = int(os.getenv("INGEST_CHUNK_SIZE", "50000"))
 
 # DfT STATS19 file URLs (updated annually)
 # "last-5-years" bundles are the most convenient.
@@ -93,13 +97,14 @@ def _download_stats19(url_or_urls: "str | list[str]", table: str) -> "pd.DataFra
             continue  # try next candidate URL
 
         try:
-            content = b""
+            # Accumulate chunks in a list to avoid O(n²) byte-string copying
+            raw_chunks: list[bytes] = []
             total = int(resp.headers.get("content-length", 0))
             with tqdm(total=total, unit="B", unit_scale=True, desc=f"  {table}") as bar:
                 for chunk in resp.iter_content(chunk_size=65536):
-                    content += chunk
+                    raw_chunks.append(chunk)
                     bar.update(len(chunk))
-            df = pd.read_csv(io.BytesIO(content), low_memory=False)
+            df = pd.read_csv(io.BytesIO(b"".join(raw_chunks)), low_memory=False)
             df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
             # DfT has renamed columns across years:
             #   accident_index → accident_reference (intermediate)
@@ -169,11 +174,28 @@ def uk_road_safety_source(years_csv: str = None):
     """years_csv: comma-separated year string, e.g. '2022,2023,2024'.
     Uses ACCIDENT_YEARS env variable when not supplied.
     A str default is used instead of list to satisfy dlt/pydantic mutable-default rule.
+
+    Optimization: all three STATS19 tables (accidents, casualties, vehicles) are
+    downloaded concurrently before any resource is yielded, cutting the HTTP wait
+    time by ~3×.
     """
     _years = [y.strip() for y in (years_csv or ACCIDENT_YEARS_RAW).split(",")]
-    yield uk_accidents_resource(_years)
-    yield uk_casualties_resource(_years)
-    yield uk_vehicles_resource(_years)
+
+    # Download all three STATS19 CSVs in parallel (independent HTTP requests)
+    table_keys = ["accidents", "casualties", "vehicles"]
+    table_dfs: dict[str, pd.DataFrame | None] = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {
+            pool.submit(_download_stats19, STATS19_URLS[k], k): k
+            for k in table_keys
+        }
+        for future in as_completed(futures):
+            key = futures[future]
+            table_dfs[key] = future.result()
+
+    yield uk_accidents_resource(_years, table_dfs["accidents"])
+    yield uk_casualties_resource(_years, table_dfs["casualties"])
+    yield uk_vehicles_resource(_years, table_dfs["vehicles"])
 
 
 @dlt.resource(
@@ -181,8 +203,11 @@ def uk_road_safety_source(years_csv: str = None):
     write_disposition="replace",
     primary_key="collision_index",
 )
-def uk_accidents_resource(years: list[str]) -> Iterator[dict]:
-    df = _download_stats19(STATS19_URLS["accidents"], "accidents")
+def uk_accidents_resource(
+    years: list[str], df: pd.DataFrame | None = None
+) -> Iterator[pd.DataFrame]:
+    if df is None:
+        df = _download_stats19(STATS19_URLS["accidents"], "accidents")
     if df is None:
         return
     df = _parse_accident_dates(df)
@@ -193,9 +218,9 @@ def uk_accidents_resource(years: list[str]) -> Iterator[dict]:
     if "time" in df.columns:
         df["hour_of_day"] = pd.to_datetime(df["time"], format="%H:%M", errors="coerce").dt.hour
 
-    logger.info("Yielding {:,} London accident rows", len(df))
-    for row in df.to_dict(orient="records"):
-        yield row
+    logger.info("Yielding {:,} London accident rows in chunks of {:,}", len(df), _CHUNK_SIZE)
+    for start in range(0, len(df), _CHUNK_SIZE):
+        yield df.iloc[start : start + _CHUNK_SIZE]
 
 
 @dlt.resource(
@@ -203,18 +228,20 @@ def uk_accidents_resource(years: list[str]) -> Iterator[dict]:
     write_disposition="replace",
     primary_key=["collision_index", "vehicle_reference", "casualty_reference"],
 )
-def uk_casualties_resource(years: list[str]) -> Iterator[dict]:
-    df = _download_stats19(STATS19_URLS["casualties"], "casualties")
+def uk_casualties_resource(
+    years: list[str], df: pd.DataFrame | None = None
+) -> Iterator[pd.DataFrame]:
+    if df is None:
+        df = _download_stats19(STATS19_URLS["casualties"], "casualties")
     if df is None:
         return
     year_col = next((c for c in ("collision_year", "accident_year") if c in df.columns), None)
     if year_col:
         int_years = [int(y) for y in years if y.isdigit()]
         df = df[df[year_col].isin(int_years)].copy()
-    # We can't filter casualty rows by lat/lon – we'll join to accidents later
-    logger.info("Yielding {:,} casualty rows", len(df))
-    for row in df.to_dict(orient="records"):
-        yield row
+    logger.info("Yielding {:,} casualty rows in chunks of {:,}", len(df), _CHUNK_SIZE)
+    for start in range(0, len(df), _CHUNK_SIZE):
+        yield df.iloc[start : start + _CHUNK_SIZE]
 
 
 @dlt.resource(
@@ -222,17 +249,20 @@ def uk_casualties_resource(years: list[str]) -> Iterator[dict]:
     write_disposition="replace",
     primary_key=["collision_index", "vehicle_reference"],
 )
-def uk_vehicles_resource(years: list[str]) -> Iterator[dict]:
-    df = _download_stats19(STATS19_URLS["vehicles"], "vehicles")
+def uk_vehicles_resource(
+    years: list[str], df: pd.DataFrame | None = None
+) -> Iterator[pd.DataFrame]:
+    if df is None:
+        df = _download_stats19(STATS19_URLS["vehicles"], "vehicles")
     if df is None:
         return
     year_col = next((c for c in ("collision_year", "accident_year") if c in df.columns), None)
     if year_col:
         int_years = [int(y) for y in years if y.isdigit()]
         df = df[df[year_col].isin(int_years)].copy()
-    logger.info("Yielding {:,} vehicle rows", len(df))
-    for row in df.to_dict(orient="records"):
-        yield row
+    logger.info("Yielding {:,} vehicle rows in chunks of {:,}", len(df), _CHUNK_SIZE)
+    for start in range(0, len(df), _CHUNK_SIZE):
+        yield df.iloc[start : start + _CHUNK_SIZE]
 
 
 # ── entrypoint ───────────────────────────────────────────────────────────────
@@ -288,8 +318,9 @@ def run(years: list[str] = None, db_path: str = DUCKDB_PATH) -> None:
 
     _purge_stale_schema()
 
-    dest = os.getenv("DESTINATION", "duckdb").lower()
-    if dest == "bigquery":
+    dest_name = os.getenv("DESTINATION", "duckdb").lower()
+    is_bq = dest_name == "bigquery"
+    if is_bq:
         logger.info("Destination: BigQuery (project={})",
                     os.getenv("DESTINATION__BIGQUERY__PROJECT_ID", "?"))
         destination = dlt.destinations.bigquery()
@@ -302,7 +333,9 @@ def run(years: list[str] = None, db_path: str = DUCKDB_PATH) -> None:
         destination=destination,
         dataset_name="raw",
     )
-    load_info = pipeline.run(uk_road_safety_source(years_csv=years_csv))
+    # Parquet is 3-5× faster than the default jsonl format for BigQuery uploads
+    run_kwargs: dict = {"loader_file_format": "parquet"} if is_bq else {}
+    load_info = pipeline.run(uk_road_safety_source(years_csv=years_csv), **run_kwargs)
     logger.info("Load complete: {}", load_info)
 
 

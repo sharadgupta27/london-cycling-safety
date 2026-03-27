@@ -137,7 +137,10 @@ def spatial_transforms() -> None:
 
 def dbt_pipeline(target: str = "dev") -> None:
     """Run dbt deps then dbt build (seeds → models → tests in DAG order)."""
-    _force_remove_dir(PROJECT_ROOT / "dbt_packages")
+    # Clean the packages path resolved from DBT_PACKAGES_PATH (container) or
+    # the local relative fallback.  Never pass the volume mount point itself.
+    pkg_path_str = os.environ.get("DBT_PACKAGES_PATH", str(PROJECT_ROOT / "dbt_packages"))
+    _force_remove_dir(Path(pkg_path_str))
 
     for cmd in [
         ["dbt", "deps", "--profiles-dir", ".", "--project-dir", "."],

@@ -4,9 +4,11 @@ london_cycling:
   outputs:
 
     # ── Local development (DuckDB) ────────────────────────────────────────────
+    # DUCKDB_PATH defaults to the local file; inside Docker it is set to the
+    # mounted volume path (e.g. /data/london_cycling.duckdb).
     dev:
       type: duckdb
-      path: london_cycling.duckdb
+      path: "{{ env_var('DUCKDB_PATH', 'london_cycling.duckdb') }}"
       threads: 4
 
     # ── Production (Google BigQuery) ─────────────────────────────────────────

@@ -1,0 +1,146 @@
+# ==============================================================================
+# London Cycling Safety – Airflow Orchestration
+# ==============================================================================
+#
+# Standalone Airflow stack (webserver + scheduler + PostgreSQL metadata DB).
+# Keeps the orchestration stack self-contained and separate from the main
+# application stack.
+#
+# Start:   cd london-cycling-safety/airflow && docker compose up -d
+# UI:      http://localhost:8080  (admin / admin)
+# Stop:    docker compose down
+# Purge:   docker compose down -v   (removes Postgres metadata + logs volume)
+#
+# Prerequisites:
+#   1. Docker Desktop running.
+#   2. Fill in root ../.env – specifically LONDON_PROJECT_PATH, CREDENTIALS_PATH
+#      and all GCP_* variables.
+#   3. The first run initialises the Airflow DB (airflow-init service exits 0).
+#
+# How DAGs access the pipeline code:
+#   The project root ($LONDON_PROJECT_PATH) is bind-mounted as /app inside the
+#   Airflow containers.  BashOperator tasks run directly in the scheduler/worker
+#   environment (no extra Docker-in-Docker required).
+#   All Python dependencies must be installed in the Airflow image – see the
+#   custom Dockerfile.airflow at the repo root.
+# ==============================================================================
+
+x-airflow-common: &airflow-common
+  image: london-cycling-airflow:latest
+  pull_policy: never          # always use the locally-built image; never pull from registry
+  env_file: ../.env
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_pass@airflow-postgres:5432/airflow
+    AIRFLOW__CORE__FERNET_KEY: ""          # generated on first init; override for prod
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Surface all GCP / project variables as Airflow Variables (AIRFLOW_VAR_* prefix)
+    # Always use the container-side mount paths (/app, /credentials) — not the
+    # host Windows paths — because BashOperator tasks run inside the container.
+    AIRFLOW_VAR_LONDON_PROJECT_PATH: "/app"
+    AIRFLOW_VAR_CREDENTIALS_PATH: "/credentials"
+    AIRFLOW_VAR_GCP_PROJECT_ID: "${GCP_PROJECT_ID:-}"
+    AIRFLOW_VAR_GCP_BQ_DATASET: "${GCP_BQ_DATASET:-dbt_london_cycling}"
+    AIRFLOW_VAR_GCP_BQ_LOCATION: "${GCP_BQ_LOCATION:-EU}"
+    AIRFLOW_VAR_CREDENTIALS_FILENAME: "${CREDENTIALS_FILENAME:-kestra-dataengg-d4b5461e94b4.json}"
+    # Used directly by ingestion scripts and dbt inside BashOperator tasks
+    GOOGLE_APPLICATION_CREDENTIALS: "/credentials/${CREDENTIALS_FILENAME:-kestra-dataengg-d4b5461e94b4.json}"
+    DESTINATION: bigquery
+    DESTINATION__BIGQUERY__PROJECT_ID: "${GCP_PROJECT_ID:-}"
+    DESTINATION__BIGQUERY__LOCATION: "${GCP_BQ_LOCATION:-EU}"
+    GCP_PROJECT_ID: "${GCP_PROJECT_ID:-}"
+    GCP_BQ_DATASET: "${GCP_BQ_DATASET:-dbt_london_cycling}"
+    GCP_BQ_LOCATION: "${GCP_BQ_LOCATION:-EU}"
+  volumes:
+    - ./dags:/opt/airflow/dags                          # DAG files
+    - airflow-logs:/opt/airflow/logs
+    - airflow-plugins:/opt/airflow/plugins
+    # Project source + credentials mounted so BashOperator tasks can run scripts
+    - ${LONDON_PROJECT_PATH:-.}:/app
+    - ${CREDENTIALS_PATH:-../credentials}:/credentials:ro
+  networks: [airflow-net]
+  depends_on:
+    airflow-postgres:
+      condition: service_healthy
+
+networks:
+  airflow-net:
+    driver: bridge
+
+volumes:
+  airflow-postgres-data:
+  airflow-logs:
+  airflow-plugins:
+
+services:
+
+  # ── PostgreSQL – Airflow metadata store ───────────────────────────────────
+  airflow-postgres:
+    image: postgres:15-alpine
+    container_name: airflow-postgres
+    networks: [airflow-net]
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow_pass
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Airflow DB init (one-shot, exits 0 on success) ────────────────────────
+  # Image is pre-built by `make airflow-up` via `docker build` before compose
+  # starts, so no build: block is needed here. All services reuse the same
+  # locally-built london-cycling-airflow:latest via pull_policy: never.
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin \
+          --firstname London \
+          --lastname Cycling \
+          --role Admin \
+          --email admin@example.com \
+          --password admin
+    restart: "no"
+
+  # ── Airflow Webserver – UI at http://localhost:8080 ───────────────────────
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── Airflow Scheduler ─────────────────────────────────────────────────────
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped

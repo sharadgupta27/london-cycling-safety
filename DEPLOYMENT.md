@@ -24,14 +24,13 @@ Step-by-step instructions for anyone to run this project locally or deploy it in
    - 6.2 Configure `.env` and credentials
    - 6.3 Run the production pipeline
    - 6.4 Scheduled runs
-7. [Kestra Orchestration (Recommended)](#7-kestra-orchestration-recommended)
-   - 7.1 Start Kestra
+7. [Apache Airflow Orchestration (Recommended)](#7-apache-airflow-orchestration-recommended)
+   - 7.1 Start Airflow
    - 7.2 Configure the environment file
-   - 7.3 Upload flows
-   - 7.4 Available flows
-   - 7.5 Trigger a manual run
-   - 7.6 Run the backfill (historical load)
-   - 7.7 How the Docker runner works
+   - 7.3 Available DAGs
+   - 7.4 Trigger a manual run
+   - 7.5 Run the backfill (historical load)
+   - 7.6 How tasks execute
 8. [Project Structure](#8-project-structure)
 9. [Troubleshooting](#9-troubleshooting)
 
@@ -62,7 +61,7 @@ TFL Cycling Data            UK Road Safety Data (DfT STATS19)
                        ▼
          Streamlit + Folium + Plotly dashboard
          [schedule_pipeline.py] – optional weekly schedule (Mon 03:00)
-         [Kestra] – recommended scheduler (Docker, web UI, retries, history) → see §7
+         [Apache Airflow] – recommended scheduler (Docker, web UI, retries, history) → see §7
 ```
 
 **What it produces:**
@@ -82,7 +81,7 @@ Install the following **before** proceeding.
 | uv | any | https://docs.astral.sh/uv/ |
 | Git | any | https://git-scm.com |
 | Google Cloud account | — | **only** for production / BigQuery option |
-| Docker Desktop | any | https://docs.docker.com/desktop/ — **only** for Kestra orchestration option |
+| Docker Desktop | any | https://docs.docker.com/desktop/ — **only** for Airflow orchestration option |
 
 Verify Python is installed:
 
@@ -413,117 +412,133 @@ make schedule
 0 3 * * 1  /path/to/.venv/bin/python /path/to/orchestration/pipeline.py --target prod >> pipeline.log 2>&1
 ```
 
-**Option D — Kestra (Recommended — web UI, retries, history):**
+**Option D — Apache Airflow (Recommended — web UI, retries, history):**
 
-Kestra is the preferred approach for any environment with Docker. It provides a web UI,
-run history, automatic retries, and a dedicated backfill flow — replacing all the options above.
+Airflow is the preferred approach for any environment with Docker. It provides a web UI,
+run history, automatic retries, and dedicated DAGs for full pipeline, backfill, and dbt refresh.
 
-See **§7 Kestra Orchestration** below for full setup instructions.
+See **§7 Apache Airflow Orchestration** below for full setup instructions.
 
 ---
 
-## 7. Kestra Orchestration (Recommended)
+## 7. Apache Airflow Orchestration (Recommended)
 
-[Kestra](https://kestra.io) is the recommended way to run and schedule the production pipeline.
-It provides a web UI, run history, retries, and a dedicated backfill flow — replacing the fragile
-`schedule_pipeline.py / cron` approach.
+[Apache Airflow](https://airflow.apache.org) is the recommended way to run and schedule the
+production pipeline. It provides a web UI, run history, retries, and parameterised DAGs for
+every workflow — replacing the fragile `schedule_pipeline.py / cron` approach.
 
 ### Prerequisites
 
 - [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) running
-- `curl` available (built into Windows 10 1803+)
+- Root `.env` filled in (see §6.2)
 
-### 7.1 Start Kestra
+### 7.1 Start Airflow
 
 ```bat
-cd london-cycling-safety\kestra
+cd london-cycling-safety\airflow
 docker compose up -d
 ```
 
-First boot downloads ~1 GB of images (Kestra + PostgreSQL).  Subsequent starts are instant.
+First boot builds the custom Airflow image (≈ 2–3 min) and initialises the metadata DB.
+Subsequent starts are instant.
 
-**UI:** http://localhost:8888  
-**API:** http://localhost:8888/api/v1
+```
+# Or use the Makefile shortcut from the project root:
+make airflow-up
+```
+
+| Endpoint | URL | Credentials |
+|---|---|---|
+| Airflow UI | http://localhost:8080 | admin / admin |
 
 To stop:
 ```bat
 docker compose down
+# or
+make airflow-down
 ```
 
 ### 7.2 Configure the environment file
 
-A pre-filled `.env` is provided in the `kestra/` directory. Edit it if your paths differ:
+All configuration is read from the single root `.env` file. Key variables used by Airflow:
 
-```
-kestra/.env
-```
-
-Key variables:
-
-| Variable | Default value | Purpose |
+| Variable | Example value | Purpose |
 |---|---|---|
-| `LONDON_PROJECT_PATH` | `C:/Users/gupta/Desktop/…/london-cycling-safety` | Mounted as `/app` inside every task container |
+| `LONDON_PROJECT_PATH` | `C:/Users/gupta/Desktop/…/london-cycling-safety` | Mounted as `/app` inside task containers |
 | `CREDENTIALS_PATH` | `…/london-cycling-safety/credentials` | Mounted as `/credentials` (read-only) |
 | `CREDENTIALS_FILENAME` | `kestra-dataengg-d4b5461e94b4.json` | GCP service-account JSON filename |
 | `GCP_PROJECT_ID` | `kestra-dataengg` | BigQuery project |
 | `GCP_BQ_DATASET` | `dbt_london_cycling` | dbt target dataset prefix |
 | `GCP_BQ_LOCATION` | `EU` | BigQuery dataset location |
 
-### 7.3 Upload flows
+These are automatically surfaced as Airflow Variables (`AIRFLOW_VAR_*`) so DAGs can read them
+with `Variable.get(...)` without any manual UI configuration.
 
-```bat
-cd london-cycling-safety\kestra
-upload_flows.bat
-```
+### 7.3 Available DAGs
 
-This POSTs the three flow YAMLs from `kestra/flows/` to the Kestra API.
-If a flow already exists it is updated in-place.
-
-### 7.4 Available flows
-
-| Flow | ID | Schedule | Purpose |
+| DAG | ID | Schedule | Purpose |
 |---|---|---|---|
 | Full pipeline | `london_cycling_full_pipeline` | Mon 03:00 UTC | Weekly production run – ingest TFL + STATS19 → dbt build |
 | Backfill | `london_cycling_backfill` | Manual only | Load multiple years of historical data + full dbt rebuild |
 | dbt refresh | `london_cycling_dbt_refresh` | Manual (optional daily) | Re-run dbt without re-ingesting |
 
-### 7.5 Trigger a manual run
+DAG files live in `airflow/dags/`:
 
-1. Open http://localhost:8888
-2. Click **Flows** → select a flow (e.g. `london_cycling_backfill`)
-3. Click **Execute** (top-right)
-4. Adjust inputs as needed (e.g. `accident_years`, `tfl_n_files`)
-5. Click **Execute** to start
+```
+airflow/
+├── docker-compose.yml         ← Airflow stack (webserver + scheduler + postgres)
+└── dags/
+    ├── full_pipeline.py       ← london_cycling_full_pipeline (weekly, Mon 03:00 UTC)
+    ├── backfill.py            ← london_cycling_backfill (manual)
+    └── dbt_refresh.py         ← london_cycling_dbt_refresh (manual)
+```
 
-You can watch log output in real-time inside the Kestra UI.
+### 7.4 Trigger a manual run
 
-### 7.6 Run the backfill (first-time historical load)
+1. Open http://localhost:8080 and log in (admin / admin).
+2. Click **DAGs** → select a DAG (e.g. `london_cycling_backfill`).
+3. Click the **▶ Trigger DAG** button (top-right) → **Trigger DAG w/ config**.
+4. Adjust JSON params as needed (e.g. `{"accident_years": "2019,2020,2021,2022,2023,2024"}`).
+5. Click **Trigger**.
 
-Use flow `london_cycling_backfill` with these inputs:
+You can watch task logs in real-time by clicking on a task instance in the Grid or Graph view.
 
-| Input | Recommended value | Notes |
+### 7.5 Run the backfill (first-time historical load)
+
+Use DAG `london_cycling_backfill` with this config:
+
+```json
+{
+    "accident_years":   "2019,2020,2021,2022,2023,2024",
+    "tfl_n_files":      52,
+    "dbt_full_refresh": true,
+    "skip_tfl":         false,
+    "skip_accidents":   false
+}
+```
+
+| Param | Recommended value | Notes |
 |---|---|---|
-| `accident_years` | `2019,2020,2021,2022,2023,2024` | All available STATS19 years |
+| `accident_years` | `"2019,2020,2021,2022,2023,2024"` | All available STATS19 years |
 | `tfl_n_files` | `52` | ≈ 1 full year of weekly TFL files |
 | `dbt_full_refresh` | `true` (default) | Rebuilds all incremental models from scratch |
-| `skip_tfl` | `false` (default) | Change to `true` to skip TFL and only reload accidents |
-| `skip_accidents` | `false` (default) | Change to `true` to skip STATS19 and only reload TFL |
+| `skip_tfl` | `false` (default) | Set `true` to skip TFL and only reload accidents |
+| `skip_accidents` | `false` (default) | Set `true` to skip STATS19 and only reload TFL |
 
-### 7.7 How the Docker runner works
+### 7.6 How tasks execute
 
-Each task runs in a fresh `python:3.11-slim` container spawned by Kestra via the
-HOST Docker daemon.  The project directory and credentials are bind-mounted into
-every container automatically via `plugin.defaults` in `docker-compose.yml`:
+BashOperator tasks run directly inside the Airflow scheduler container.
+The project root and credentials are bind-mounted so scripts run unmodified:
 
 ```
-HOST                               Container
-────────────────────────────────── ───────────────────────
-$LONDON_PROJECT_PATH          →    /app          (read-write)
-$CREDENTIALS_PATH             →    /credentials  (read-only)
+HOST                                      Container (Airflow scheduler)
+──────────────────────────────────────── ───────────────────────
+$LONDON_PROJECT_PATH               →     /app          (read-write)
+$CREDENTIALS_PATH                  →     /credentials  (read-only)
 ```
 
-The pipeline scripts in `/app/ingestion/` and the dbt project in `/app/` are
-therefore available to every task without any extra COPY or image-build step.
+All project Python dependencies (`dlt`, `dbt-bigquery`, etc.) are pre-installed in
+the Airflow image via `Dockerfile.airflow`.
 
 ---
 
@@ -554,15 +569,14 @@ london-cycling-safety/
 │   ├── pipeline.py              # production orchestrator (BigQuery target)
 │   └── schedule_pipeline.py    # optional weekly scheduler
 │
-├── kestra/                         # Kestra orchestration (recommended)
-│   ├── docker-compose.yml          # Kestra + PostgreSQL containers
-│   ├── .env                        # path + GCP variables (not committed)
-│   ├── .env.example                # template
-│   ├── upload_flows.bat            # POST flows to Kestra API
-│   └── flows/
-│       ├── 01_full_pipeline.yml    # weekly production run (Mon 03:00 UTC)
-│       ├── 02_backfill.yml         # manual historical load
-│       └── 03_dbt_refresh.yml      # dbt-only refresh
+├── airflow/                        # Apache Airflow orchestration (recommended)
+│   ├── docker-compose.yml          # Airflow webserver + scheduler + postgres
+│   └── dags/
+│       ├── full_pipeline.py        # weekly production run (Mon 03:00 UTC)
+│       ├── backfill.py             # manual historical load
+│       └── dbt_refresh.py          # dbt-only refresh
+│
+├── Dockerfile.airflow              # custom Airflow image with project deps
 │
 ├── profiles.yml                    # dbt profiles (dev=DuckDB, prod=BigQuery)
 ├── dbt_project.yml                 # dbt project config
@@ -636,33 +650,42 @@ Run the `gcloud projects add-iam-policy-binding` commands in §6.1 again and re-
 
 ---
 
-### Kestra port 8888 already in use
+### Airflow port 8080 already in use
 
-Change the host port in `kestra/docker-compose.yml`:
+Change the host port in `airflow/docker-compose.yml`:
 ```yaml
 ports:
-  - "9888:8080"   # change 9888 to any free port
-  - "9889:8081"
+  - "8081:8080"   # change 8081 to any free port
 ```
-Then update `KESTRA_URL` in `kestra/upload_flows.bat` to match.
+Then open http://localhost:8081 instead of http://localhost:8080.
 
 ---
 
-### `${VAR}` not substituted in Kestra `docker-compose.yml`
+### DAG does not appear in the Airflow UI
 
-Docker Compose only auto-loads a file named exactly `.env` for YAML variable substitution.
-Ensure the file is named `kestra/.env` (not `.kestra.env` or any other name).
-
----
-
-### Storage permission error in Kestra logs
-
-Kestra needs write access to its internal storage volume. Ensure `user: "root"` is set
-on the `kestra` service in `kestra/docker-compose.yml`.
+Airflow scans `airflow/dags/` every 30 seconds. If a new DAG is missing after a minute:
+1. Check for import errors: **Admin → DAG Import Errors** in the Airflow UI.
+2. In terminal: `docker compose -f airflow/docker-compose.yml logs airflow-scheduler | tail -50`
+3. Verify the DAG file is saved in `airflow/dags/` (bind-mounted as `/opt/airflow/dags`).
 
 ---
 
-### `upload_flows.bat` reports "Cannot reach Kestra"
+### `airflow-init` exits without creating admin user
 
-Wait 30–60 seconds after `docker compose up -d` before running `upload_flows.bat`.
-Kestra takes a moment to initialise. You can monitor readiness at http://localhost:8888.
+```bash
+docker compose -f airflow/docker-compose.yml logs airflow-init
+```
+Common causes: metadata DB connection issue (wait a few seconds and re-run `make airflow-up`),
+or a leftover volume from a previous install. To reset completely:
+```bash
+docker compose -f airflow/docker-compose.yml down -v
+make airflow-up
+```
+
+---
+
+### GCP credentials not found inside Airflow tasks
+
+Ensure `CREDENTIALS_PATH` in `.env` points to the directory containing the service-account JSON
+(not to the JSON file itself). The directory is mounted read-only as `/credentials` inside the
+Airflow scheduler container. Then verify `CREDENTIALS_FILENAME` matches the actual filename.

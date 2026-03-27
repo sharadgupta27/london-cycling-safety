@@ -53,7 +53,7 @@ corridor_pairs AS (
       AND start_station_name IS NOT NULL
       AND end_station_name   IS NOT NULL
     GROUP BY 1, 2
-    HAVING COUNT(*) >= 10
+    HAVING COUNT(*) >= 100  -- minimum exposure: exclude corridors with < 100 journeys
 ),
 
 -- Attach station geometry to each corridor (join on name, not ID)
@@ -126,9 +126,16 @@ enriched AS (
         ROUND(SAFE_DIVIDE(cr.corridor_risk_raw_score,
                           cl.length_m / 1000.0), 2)            AS risk_per_km,
 
-        -- composite: risk × ln(journey volume)
-        ROUND(cr.corridor_risk_raw_score
-              * LN(cl.journey_count + 1), 2)                   AS composite_risk_score
+        -- exposure-normalised risk: severity-weighted crashes per million journey-km
+        -- Formula: Risk = severity_crashes / (length_km × journey_count) × 1,000,000
+        -- Uses journey_count as AADT proxy; dividing by exposure avoids inflating
+        -- scores for high-volume corridors (replaces old: raw × ln(journeys+1))
+        ROUND(
+            SAFE_DIVIDE(
+                cr.corridor_risk_raw_score,
+                (cl.length_m / 1000.0) * cl.journey_count
+            ) * 1000000,
+        2)                                                     AS composite_risk_score
     FROM corridor_lines cl
     JOIN corridor_risk_raw cr
       ON cr.station_a_id = cl.station_a_id

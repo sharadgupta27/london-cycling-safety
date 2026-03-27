@@ -1,0 +1,76 @@
+﻿# ==============================================================================
+# London Cycling Safety – Docker Compose (base)
+# ==============================================================================
+#
+# This file defines the application services (dashboard + pipeline runner).
+# Always combine it with an environment-specific override:
+#
+#   Development  (DuckDB – no GCP account needed):
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#         run --rm pipeline
+#
+#   Production  (BigQuery):
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#         run --rm pipeline
+#
+# Orchestration (Airflow):
+#   cd airflow && docker compose up -d
+#   Airflow UI → http://localhost:8080  (admin / admin)
+#
+# Convenience shortcuts are in Makefile:
+#   make dev-up      / make dev-run      / make dev-down
+#   make prod-up     / make prod-run     / make prod-down
+#   make airflow-up  / make airflow-down
+#
+# Prerequisites:
+#   1. Docker Desktop running (WSL2 backend recommended on Windows).
+#   2. Copy .env.example → .env and fill in at least LONDON_PROJECT_PATH.
+#   3. Production only: place GCP service-account JSON in credentials/.
+# ==============================================================================
+
+networks:
+  cycling-net:
+    driver: bridge
+
+volumes:
+  dbt-packages:       # dbt package cache shared across pipeline runs
+
+services:
+
+  # ── Streamlit Dashboard ──────────────────────────────────────────────────────
+  # http://localhost:8501
+  # Environment (DASHBOARD_TARGET, DUCKDB_PATH, GCP_* …) set in override files.
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: london-cycling-safety:latest
+    container_name: cycling-dashboard
+    networks: [cycling-net]
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    env_file: .env
+    restart: unless-stopped
+
+  # ── Pipeline runner ──────────────────────────────────────────────────────────
+  # One-shot service; NOT started by `docker compose up`.
+  # Run on-demand via:
+  #   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+  #       run --rm pipeline
+  #
+  # The `--target dev|prod` flag and environment variables are set in the
+  # override files (docker-compose.dev.yml / docker-compose.prod.yml).
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: london-cycling-safety:latest
+    container_name: cycling-pipeline
+    networks: [cycling-net]
+    env_file: .env
+    volumes:
+      - dbt-packages:/tmp/dbt_packages   # persist dbt package cache between runs
+    profiles: ["pipeline"]               # excluded from `up`; use `run --rm pipeline`
+    restart: "no"

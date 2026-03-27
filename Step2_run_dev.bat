@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================
-:: London Cycling Safety - Step 2: Development Pipeline (DuckDB)
+:: London Cycling Safety — Step 2: Development Pipeline (DuckDB)
 :: ============================================================
 :: Prerequisite: run Step1_setup.bat at least once first.
 ::
@@ -10,7 +10,7 @@
 ::   3. Run dbt build  (seeds → staging → intermediate → marts + tests)
 ::   4. Launch the Streamlit dashboard at http://localhost:8501
 ::
-:: No cloud account required - everything runs locally in DuckDB.
+:: No cloud account required — everything runs locally in DuckDB.
 ::
 :: .venv search order (same as Step1_setup.bat):
 ::   1. <parent_dir>\.venv  (shared venv one level above project)
@@ -41,7 +41,7 @@ set "STREAMLIT_EXE=%VENV_DIR%\Scripts\streamlit.exe"
 
 echo.
 echo ============================================================
-echo  London Cycling Safety - Step 2: Development Pipeline
+echo  London Cycling Safety — Step 2: Development Pipeline
 echo ============================================================
 echo  Project: %PROJECT_DIR%
 echo.
@@ -76,7 +76,7 @@ if errorlevel 1 (
     echo.
     echo  ERROR: Pipeline did not complete successfully.
     echo  Check the output above for details.
-    echo  You can re-run individual steps - see DEPLOYMENT.md for commands.
+    echo  You can re-run individual steps — see DEPLOYMENT.md for commands.
     pause
     exit /b 1
 )

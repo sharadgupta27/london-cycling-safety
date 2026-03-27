@@ -1,0 +1,49 @@
+# ==============================================================================
+# Airflow image for the London Cycling Safety project
+#
+# Extends the official Apache Airflow image with all project dependencies so
+# BashOperator tasks can run ingestion scripts and dbt directly inside the
+# scheduler/worker containers — no Docker-in-Docker required.
+#
+# Build: (handled automatically by docker compose in airflow/)
+#   docker build -f Dockerfile.airflow -t london-cycling-airflow:latest .
+# ==============================================================================
+
+ARG AIRFLOW_VERSION=2.9.3
+FROM apache/airflow:${AIRFLOW_VERSION}-python3.11
+
+# Switch to root to install system packages
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+        curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Switch back to airflow user for pip installs
+USER airflow
+
+# Copy dependency files
+COPY requirements.txt /tmp/requirements.txt
+
+# Install project runtime dependencies
+RUN pip install --no-cache-dir \
+        "dlt[bigquery]>=0.5.0" \
+        "dbt-bigquery>=1.8.0" \
+        "dbt-core>=1.8.0" \
+        requests \
+        beautifulsoup4 \
+        pandas \
+        python-dotenv \
+        loguru \
+        tqdm \
+    && pip install --no-cache-dir -r /tmp/requirements.txt \
+    || true   # requirements.txt may contain packages already satisfied above
+
+# Copy project source into /app so dbt project-dir works even if the
+# LONDON_PROJECT_PATH volume is not mounted (e.g. CI environments).
+COPY --chown=airflow:root . /app
+
+WORKDIR /app

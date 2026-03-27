@@ -1,12 +1,8 @@
 -- staging/stg_bike_journeys.sql
 -- Cleans and casts raw TFL journey data.
 --
--- BigQuery note: dlt stores numeric columns with mixed types as variant columns
--- (e.g. duration_seconds__v_double when the CSV value isn't a plain integer).
--- We COALESCE the three duration columns in priority order:
---   1. duration_seconds       (INT64  – populated when value was a plain int)
---   2. duration_seconds__v_double  (FLOAT64 – populated for most rows)
---   3. duration_ms / 1000     (INT64  – fallback; always present)
+-- dlt schema defines duration_seconds as FLOAT64 (double) so BigQuery stores it
+-- as a single FLOAT64 column. We cast it to INT64, falling back to duration_ms/1000.
 
 {{
   config(materialized='view', schema='staging')
@@ -20,11 +16,12 @@ WITH source AS (
 with_duration AS (
     SELECT
         *,
-        COALESCE(
-            duration_seconds,
-            CAST(duration_seconds__v_double AS INT64),
-            CAST(SAFE_DIVIDE(CAST(duration_ms AS FLOAT64), 1000.0) AS INT64)
-        ) AS dur_sec
+        CAST(
+            COALESCE(
+                duration_seconds,
+                SAFE_DIVIDE(CAST(duration_ms AS FLOAT64), 1000.0)
+            )
+        AS INT64) AS dur_sec
     FROM source
 ),
 {% else %}
@@ -40,8 +37,8 @@ renamed AS (
         dur_sec                               AS duration_seconds,
         ROUND(dur_sec / 60.0, 1)             AS duration_minutes,
         {{ safe_cast('bike_id', 'STRING') }}     AS bike_id,
-        -- bike_model was added in later TFL file vintages; not in these files
-        {{ safe_cast('NULL', 'STRING') }}         AS bike_model,
+        -- bike_model present in newer TFL file vintages (2023+); NULL for older files
+        {{ safe_cast('bike_model', 'STRING') }}       AS bike_model,
 
         -- start
         {{ safe_cast('start_date', 'TIMESTAMP') }} AS start_at,

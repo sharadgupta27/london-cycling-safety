@@ -61,7 +61,7 @@ def dark_layout(**overrides) -> dict:
         ),
         margin=dict(l=8, r=8, t=32, b=8),
         hoverlabel=dict(bgcolor=PANEL2, bordercolor=BORDER, font=dict(color=TEXT)),
-        title_font=dict(color=TEXT),
+        title=dict(font=dict(color=TEXT), text=""),
     )
     # Deep-merge overrides so nested dicts (xaxis, yaxis …) blend properly
     for key, val in overrides.items():
@@ -141,7 +141,7 @@ _CSS = """
 }
 .block-container,
 [data-testid="block-container"] {
-    padding-top:    0.35rem !important;
+    padding-top:    0.3rem  !important;
     padding-bottom: 0.5rem  !important;
     max-width:      100%    !important;
 }
@@ -276,6 +276,82 @@ hr                        { border-color: #2A2A2A !important; }
 /* ── Hide Streamlit chrome ──────────────────────────────────── */
 [data-testid="stToolbar"], footer { display: none !important; }
 
+/* ── Hide Streamlit's auto-generated sidebar page list ─────── */
+/* We use our own page_tab_nav() NAVIGATE section instead.        */
+[data-testid="stSidebarNav"] {
+    display: none !important;
+}
+
+/* ── Streamlit top header bar  ──────────────────────────────── */
+/* Keep dark background (removes white strip) but DON'T collapse  */
+/* height – that kills the sidebar toggle button.                 */
+[data-testid="stHeader"] {
+    background-color: #1B1B1B !important;
+    border-bottom: none !important;
+    padding: 0 !important;
+}
+
+/* ── Sidebar collapse button (visible inside open sidebar) ───── */
+button[data-testid="stBaseButton-headerNoPadding"],
+button[data-testid="stSidebarCollapseButton"] {
+    color: #FF9800 !important;
+    background: transparent !important;
+}
+button[data-testid="stBaseButton-headerNoPadding"] svg,
+button[data-testid="stSidebarCollapseButton"] svg {
+    fill: #FF9800 !important;
+}
+
+/* ── Sidebar EXPAND button (shown when sidebar is collapsed) ──── */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 99999 !important;
+    background-color: #1B1B1B !important;
+    border: 2px solid #FF9800 !important;
+    border-left: none !important;
+    border-radius: 0 6px 6px 0 !important;
+}
+[data-testid="collapsedControl"] button,
+[data-testid="stSidebarCollapsedControl"] button {
+    color: #FF9800 !important;
+    background: transparent !important;
+}
+[data-testid="collapsedControl"] svg,
+[data-testid="stSidebarCollapsedControl"] svg {
+    fill: #FF9800 !important;
+    stroke: #FF9800 !important;
+}
+[data-testid="collapsedControl"] button:hover,
+[data-testid="stSidebarCollapsedControl"] button:hover {
+    background: #2A2A2A !important;
+}
+
+/* ── Page-link nav items (sidebar) ──────────────────────────── */
+section[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] {
+    color: #808080 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    font-size: 0.80rem !important;
+    font-weight: 600 !important;
+    padding: 0.3rem 0.5rem !important;
+    border-radius: 4px !important;
+    letter-spacing: 0.03em !important;
+}
+section[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover {
+    color: #E0E0E0 !important;
+    background: #2A2A2A !important;
+}
+section[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][aria-current="page"] {
+    color: #FF9800 !important;
+    background: #2A1F0A !important;
+    font-weight: 700 !important;
+    border-left: 2px solid #FF9800 !important;
+}
+
 /* ── Dataframe dark tint ────────────────────────────────────── */
 [data-testid="stDataFrame"] thead tr th {
     background-color: #242424 !important;
@@ -340,27 +416,27 @@ def inject_arcgis_theme() -> None:
 
 
 def page_tab_nav(active: str) -> None:
-    """Render a tab bar with Home + 3 page links.
+    """Inject navigation links at the top of the sidebar.
 
-    active: one of "home", "blackspot", "corridor", "temporal"
+    Uses st.page_link() for proper Streamlit client-side routing.
+    active is accepted for API compatibility but Streamlit highlights
+    the current page automatically via aria-current="page".
     """
-    tabs = [
-        ("home",      "🏠",                 "app",                    "Home"),
-        ("blackspot", "🔴 Blackspot Map",    "01_blackspot_map",       "01_blackspot_map"),
-        ("corridor",  "🟠 Corridor Risk",    "02_corridor_risk",       "02_corridor_risk"),
-        ("temporal",  "🔵 Temporal Patterns","03_temporal_patterns",   "03_temporal_patterns"),
+    pages = [
+        ("app.py",                        "🏠  Home"),
+        ("pages/01_blackspot_map.py",     "🔴  Blackspot Map"),
+        ("pages/02_corridor_risk.py",     "🟠  Corridor Risk"),
+        ("pages/03_temporal_patterns.py", "🔵  Temporal Patterns"),
     ]
-    parts = []
-    for key, label, page_file, _ in tabs:
-        css_cls = "home-tab" if key == "home" else ""
-        if key == active:
-            css_cls += " active-tab"
-        css_cls = css_cls.strip()
-        href = f"/{page_file}" if key != "home" else "/"
-        parts.append(
-            f'<a class="{css_cls}" href="{href}" target="_self">{label}</a>'
+    with st.sidebar:
+        st.markdown(
+            '<p style="color:#FF9800;font-size:0.68rem;text-transform:uppercase;'
+            'letter-spacing:0.09em;margin:0.5rem 0 0.2rem 0;font-weight:700;">NAVIGATE</p>',
+            unsafe_allow_html=True,
         )
-    st.markdown(
-        f'<nav class="tab-nav">{"".join(parts)}</nav>',
-        unsafe_allow_html=True,
-    )
+        for path, label in pages:
+            st.page_link(path, label=label, use_container_width=True)
+        st.markdown(
+            '<hr style="border-color:#222;margin:0.5rem 0 0.4rem 0;">',
+            unsafe_allow_html=True,
+        )

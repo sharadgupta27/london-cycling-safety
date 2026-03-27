@@ -222,7 +222,7 @@ def pipeline_summary() -> dict:
             try:
                 counts[key] = int(con.execute(f"SELECT COUNT(*) FROM raw.{table}").fetchone()[0])
             except Exception:
-                counts[key] = 0
+                counts[key] = "N/A"
         con.close()
     return counts
 

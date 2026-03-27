@@ -3,10 +3,11 @@ orchestration/schedule_pipeline.py
 ====================================
 Lightweight local scheduler (kept as a fallback alternative).
 
-NOTE — Kestra is now the RECOMMENDED orchestration approach.
-       See the `kestra/` directory and DEPLOYMENT.md §7 for setup instructions.
-       Kestra provides a web UI, run history, retries, and a dedicated backfill
-       flow.  Use this script only if you want a zero-dependency local scheduler
+NOTE — Apache Airflow is now the RECOMMENDED orchestration approach.
+       See the `airflow/` directory and DEPLOYMENT.md §7 for setup instructions.
+       Airflow provides a web UI, run history, retries, and dedicated DAGs for
+       full pipeline, backfill, and dbt refresh.
+       Use this script only if you want a zero-dependency local scheduler
        without Docker.
 
 Uses the `schedule` library to run pipeline.py on a configurable day/time

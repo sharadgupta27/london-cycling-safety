@@ -1,0 +1,56 @@
+# ==============================================================================
+# .dockerignore – London Cycling Safety
+# ==============================================================================
+# Prevent secrets, caches, and bulky runtime artefacts from being baked into
+# the image.  Data files and credentials are supplied at runtime via volumes.
+# ==============================================================================
+
+# ── Version control ───────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Python byte-code and virtual envs ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.eggs/
+
+# ── Linter / formatter caches ─────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# ── dbt artefacts (rebuilt inside the container) ─────────────────────────────
+target/
+dbt_packages/
+
+# ── Secrets – NEVER bake into the image ──────────────────────────────────────
+credentials/*.json
+.env
+.kestra.env
+
+# ── Data files – supplied at runtime via Docker volumes ──────────────────────
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS artefacts ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Log files ────────────────────────────────────────────────────────────────
+*.log
+logs/*.sql
+
+# ── Docker files themselves (not needed in the build context) ─────────────────
+docker-compose*.yml
+Dockerfile*

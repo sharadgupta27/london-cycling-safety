@@ -1,0 +1,46 @@
+# ==============================================================================
+# London Cycling Safety – Development overrides  (DuckDB, no GCP required)
+# ==============================================================================
+#
+# Extends docker-compose.yml for a fully local development stack.
+# The pipeline writes to a named Docker volume (duckdb-data) and the
+# dashboard reads from the same volume, so both share the same DuckDB file.
+#
+# Quick start:
+#   1. cp .env.example .env           # fill in LONDON_PROJECT_PATH at minimum
+#   2. docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#   3. docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#          run --rm pipeline
+#
+#   Dashboard → http://localhost:8501
+#
+#   For orchestrated runs (Airflow UI):
+#   cd airflow && docker compose up -d
+#   Airflow UI → http://localhost:8080  (admin / admin)
+#
+# Or use the Makefile shortcut:  make dev-up  /  make dev-run
+# ==============================================================================
+
+volumes:
+  duckdb-data:   # DuckDB file shared between the pipeline (write) and dashboard (read)
+
+services:
+
+  # ── Dashboard – dev mode (reads from DuckDB) ──────────────────────────────
+  dashboard:
+    environment:
+      DASHBOARD_TARGET: dev
+      # Absolute path inside the container; both services mount duckdb-data here.
+      DUCKDB_PATH: /data/london_cycling.duckdb
+    volumes:
+      - duckdb-data:/data
+
+  # ── Pipeline – dev mode (writes DuckDB, no BigQuery) ─────────────────────
+  pipeline:
+    command: ["python", "orchestration/pipeline.py", "--target", "dev"]
+    environment:
+      DUCKDB_PATH: /data/london_cycling.duckdb
+    volumes:
+      # duckdb-data: written by pipeline, read by dashboard
+      - duckdb-data:/data
+      # dbt-packages: inherited from base (persists between pipeline runs)

@@ -24,7 +24,7 @@ monthly AS (
 ),
 {% else %}
 monthly AS (
-    SELECT * FROM spatial_layer.monthly_accident_trend
+    SELECT * FROM {{ source('spatial_layer', 'monthly_accident_trend') }}
 ),
 {% endif %}
 

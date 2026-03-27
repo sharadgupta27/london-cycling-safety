@@ -55,22 +55,6 @@ with st.sidebar:
 
     st.markdown(
         '<p style="color:#FF9800; font-size:0.7rem; text-transform:uppercase; '
-        'letter-spacing:0.09em; margin-bottom:0.45rem; font-weight:700;">HOW TO USE</p>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("""
-    <div style="font-size:0.74rem; color:#666; line-height:1.85;">
-      <span style="color:#bbb;">1.</span>&nbsp; Click the page links above to navigate<br>
-      <span style="color:#bbb;">2.</span>&nbsp; Each page has <strong style="color:#aaa">sidebar filters</strong><br>
-      <span style="color:#bbb;">3.</span>&nbsp; Maps are <strong style="color:#aaa">interactive</strong> – zoom &amp; click<br>
-      <span style="color:#bbb;">4.</span>&nbsp; Charts show <strong style="color:#aaa">tooltips</strong> on hover<br>
-      <span style="color:#bbb;">5.</span>&nbsp; Use "Open →" buttons below to jump to pages
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<hr style="border-color:#222; margin:0.75rem 0;">', unsafe_allow_html=True)
-    st.markdown(
-        '<p style="color:#FF9800; font-size:0.7rem; text-transform:uppercase; '
         'letter-spacing:0.09em; margin-bottom:0.35rem; font-weight:700;">DATA SOURCES</p>',
         unsafe_allow_html=True,
     )
@@ -153,66 +137,23 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Overview map  +  navigation panels ──────────────────────────────────────
-map_col, nav_col = st.columns([3, 2], gap="medium")
-
-with map_col:
-    st.markdown(
-        '<p style="color:#555; font-size:0.72rem; text-transform:uppercase; '
-        'letter-spacing:0.07em; margin:0 0 0.3rem 0;">LONDON OVERVIEW — STATION RISK MAP</p>',
-        unsafe_allow_html=True,
-    )
-    m = base_map(zoom=11)
-    if stations_df is not None and len(stations_df) > 0:
-        m = add_station_circles(m, stations_df, name="Stations (risk)")
-        m = add_legend(m, "Station Risk Score", {
-            "Extreme (≥9)": DANGER,
-            "High (7–8)":   ACCENT,
-            "Medium (4–6)": WARNING,
-            "Low (<4)":     SAFE,
-        })
-        folium.LayerControl(position="topright", collapsed=True).add_to(m)
-    st_folium(m, width="100%", height=420, returned_objects=[])
-
-with nav_col:
-    st.markdown(
-        '<p style="color:#555; font-size:0.72rem; text-transform:uppercase; '
-        'letter-spacing:0.07em; margin:0 0 0.4rem 0;">DASHBOARD VIEWS</p>',
-        unsafe_allow_html=True,
-    )
-    pages_info = [
-        (
-            "#F44336", "🔴 ACCIDENT BLACKSPOT MAP",
-            "Interactive heatmap overlaying accident density on 800+ TFL Santander docking "
-            "stations. Each station is colour-coded by weighted risk score (10×fatal + 3×serious + 1×slight).",
-            "pages/01_blackspot_map.py",
-        ),
-        (
-            "#FF9800", "🟠 CORRIDOR RISK SCORES",
-            "90K+ station-to-station corridors ranked by composite risk = accident weight × ln(journeys). "
-            "Dark map, filterable by risk category and journey volume.",
-            "pages/02_corridor_risk.py",
-        ),
-        (
-            "#2196F3", "🔵 TEMPORAL PATTERNS",
-            "Rush-hour vs weekend distribution, hour-of-day heatmap by weekday, monthly "
-            "seasonality and year-over-year accident trends.",
-            "pages/03_temporal_patterns.py",
-        ),
-    ]
-    for colour, title, desc, page_path in pages_info:
-        st.markdown(f"""
-        <div class="arcgis-panel" style="border-left-color:{colour}; margin-bottom:0.35rem;">
-          <div style="color:{colour}; font-size:0.78rem; font-weight:700;
-                      text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.28rem;">
-            {title}
-          </div>
-          <div style="color:#909090; font-size:0.74rem; line-height:1.5;">
-            {desc}
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.page_link(page_path, label=f"Open → {title.split(' ', 1)[1].title()}", use_container_width=True)
+# ── Overview map ────────────────────────────────────────────────────────────
+st.markdown(
+    '<p style="color:#555; font-size:0.72rem; text-transform:uppercase; '
+    'letter-spacing:0.07em; margin:0 0 0.3rem 0;">LONDON OVERVIEW — STATION RISK MAP</p>',
+    unsafe_allow_html=True,
+)
+m = base_map(zoom=11)
+if stations_df is not None and len(stations_df) > 0:
+    m = add_station_circles(m, stations_df, name="Stations (risk)")
+    m = add_legend(m, "Station Risk Score", {
+        "Extreme (≥9)": DANGER,
+        "High (7–8)":   ACCENT,
+        "Medium (4–6)": WARNING,
+        "Low (<4)":     SAFE,
+    })
+    folium.LayerControl(position="topright", collapsed=True).add_to(m)
+st_folium(m, width="100%", height=520, returned_objects=[])
 
 # ── Pipeline & tech stack ────────────────────────────────────────────────────
 st.markdown(
@@ -225,37 +166,61 @@ with col_arch:
     with st.expander("⚙️ Pipeline Architecture", expanded=False):
         st.markdown("""
         ```
-        TFL Cycling Data  ──────────────────────────────────────┐
-        (cycling.data.tfl.gov.uk)                               │
-                                                                ▼
-        UK STATS19 Road Accidents  ──────→  [dlt → BigQuery raw.*]
-        (data.dft.gov.uk)                                       │
-                                                                ▼
-                                              [dbt-bigquery models]
-                                           staging → intermediate → marts
-                                           int_corridor_risk (BQ GIS)
-                                           mart_corridor_risk_score
-                                           mart_blackspot_stations
-                                                                │
-                                     ┌──────────────────────────┤
-                                     ▼                          ▼
-                              Folium Maps                 Plotly Charts
-                              (dark tiles)                (dark theme)
-                                     └──────────────────────────┘
-                                                                │
-                                                       Streamlit App
+        ╔══════════════════════════════════════════════════════════╗
+        ║                    DATA SOURCES                          ║
+        ║  TFL Cycling API          DfT STATS19 Road Accidents     ║
+        ║  cycling.data.tfl.gov.uk  data.dft.gov.uk (CSV)         ║
+        ╚══════════════╤═══════════════════╤══════════════════════╝
+                       │                   │
+                       ▼                   ▼
+        ╔══════════════════════════════════════════════════════════╗
+        ║          INGESTION  (Python · dlt / requests)            ║
+        ║  Local dev  →  DuckDB          Prod  →  Google BigQuery  ║
+        ║  ingestion/ingest_tfl_cycling.py                         ║
+        ║  ingestion/ingest_uk_accidents.py                        ║
+        ╚══════════════════════════════╤═══════════════════════════╝
+                                       │
+                                       ▼
+        ╔══════════════════════════════════════════════════════════╗
+        ║           ORCHESTRATION  (Apache Airflow · Docker)             ║
+        ║  full_pipeline DAG  ·  backfill DAG                            ║
+        ║  dbt_refresh DAG    ·  Scheduled + manual triggers             ║
+        ╚══════════════════════════════╤═══════════════════════════╝
+                                       │
+                                       ▼
+        ╔══════════════════════════════════════════════════════════╗
+        ║              dbt TRANSFORMATIONS                         ║
+        ║  Staging          Intermediate          Marts            ║
+        ║  stg_accidents    int_corridor_risk      mart_blackspot   ║
+        ║  stg_journeys     int_station_blackspot  mart_corridor    ║
+        ║  stg_stations     int_temporal_hourly    mart_temporal    ║
+        ║               BigQuery GIS  (ST_DWITHIN, ST_MAKELINE)    ║
+        ╚════════════╤══════════════════════════════════╤══════════╝
+                     │                                  │
+                     ▼                                  ▼
+              Folium Maps                         Plotly Charts
+              (dark tiles · Leaflet)              (dark theme)
+                     └──────────────┬─────────────────┘
+                                    ▼
+                           Streamlit Dashboard
+                       (multi-page · Docker Compose)
         ```
         """)
 
 with col_stack:
     with st.expander("🛠️ Technology Stack", expanded=False):
         stack_rows = [
-            ("Ingestion",     "dlt",                "BigQuery write_disposition=replace"),
-            ("Warehouse",     "Google BigQuery",    "raw + dbt_ datasets"),
-            ("Transforms",    "dbt-bigquery 1.11",  "Staging → Intermediate → Marts"),
-            ("Spatial",       "BigQuery GIS",       "ST_MAKELINE, ST_DWITHIN, ST_DISTANCE"),
-            ("Visualisation", "Folium + Plotly",    "Dark map tiles + dark Plotly charts"),
-            ("App",           "Streamlit 1.35+",    "Multi-page, wide layout"),
+            ("Language",       "Python 3.11+",          "Core runtime for ingestion, transforms & app"),
+            ("Ingestion",      "dlt 0.4+",               "Data load tool · BigQuery & DuckDB adapters"),
+            ("Warehouse",      "Google BigQuery",        "Production · raw.* + dbt_* datasets"),
+            ("Local Dev",      "DuckDB",                 "In-process analytical DB · zero-config"),
+            ("Transforms",     "dbt-bigquery 1.11",      "Staging → Intermediate → Marts"),
+            ("Spatial",        "BigQuery GIS",           "ST_MAKELINE · ST_DWITHIN · ST_DISTANCE"),
+            ("Orchestration",  "Apache Airflow 2.9",     "Self-hosted · Docker · 3 DAGs (scheduled + manual)"),
+            ("Visualisation",  "Folium + Plotly",        "Dark Leaflet tiles + dark Plotly charts"),
+            ("App",            "Streamlit 1.35+",        "Multi-page · wide layout · Docker Compose"),
+            ("Testing",        "pytest + pytest-cov",    "Unit & integration tests · conftest fixtures"),
+            ("Containerise",   "Docker Compose",         "dev / prod profiles · hot-reload dev mode"),
         ]
         for layer, tool, desc in stack_rows:
             st.markdown(
@@ -263,12 +228,13 @@ with col_stack:
                 f'border-bottom:1px solid #2A2A2A;font-size:0.8rem;">'
                 f'<span style="color:#FF9800;font-weight:600;width:110px;">{layer}</span>'
                 f'<span style="color:#D8D8D8;flex:1;">{tool}</span>'
-                f'<span style="color:#606060;font-size:0.72rem;width:250px;text-align:right;">{desc}</span>'
+                f'<span style="color:#606060;font-size:0.72rem;width:270px;text-align:right;">{desc}</span>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
 
 st.caption(
-    "Data: TFL Open Data  ·  DfT STATS19 (Crown copyright)  ·  BigQuery: kestra-dataengg"
+    "Data: TFL Open Data  ·  DfT STATS19 (Crown copyright)  ·  BigQuery: kestra-dataengg  "
+    "·  Orchestration: Apache Airflow  ·  Local dev: DuckDB  ·  Containerised with Docker Compose"
 )
 

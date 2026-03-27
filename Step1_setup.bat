@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================
-:: London Cycling Safety - Step 1: Environment Setup
+:: London Cycling Safety — Step 1: Environment Setup
 :: ============================================================
 :: Run this ONCE before running Step2_run_dev.bat or
 :: Step2_run_prod.bat.  It handles:
@@ -42,7 +42,7 @@ set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
 
 echo.
 echo ============================================================
-echo  London Cycling Safety - Step 1: Environment Setup
+echo  London Cycling Safety — Step 1: Environment Setup
 echo ============================================================
 echo  Project: %PROJECT_DIR%
 echo.
@@ -98,9 +98,9 @@ echo.
 echo [3/3] Checking .env file...
 if not exist "%PROJECT_DIR%\.env" (
     if exist "%PROJECT_DIR%\.env.example" (
-        echo  .env not found - copying from .env.example
+        echo  .env not found — copying from .env.example
         copy /Y "%PROJECT_DIR%\.env.example" "%PROJECT_DIR%\.env" >nul
-        echo  Created .env - using default DuckDB settings.
+        echo  Created .env — using default DuckDB settings.
         echo  Edit .env with your GCP values if you plan to run the production pipeline.
     ) else (
         echo  WARNING: No .env or .env.example found. Continuing with defaults.

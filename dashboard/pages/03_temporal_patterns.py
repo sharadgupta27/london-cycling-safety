@@ -64,8 +64,6 @@ st.sidebar.markdown("""
   <div style="color:#333; font-size:0.66rem; text-align:center;">Rush hours · seasonality · trends</div>
 </div>
 """, unsafe_allow_html=True)
-st.sidebar.page_link("app.py", label="🏠 Home", use_container_width=True)
-st.sidebar.markdown("<hr style='border-color:#222; margin:0.4rem 0;'>", unsafe_allow_html=True)
 st.sidebar.markdown(
     '<p style="text-transform:uppercase;letter-spacing:0.07em;font-size:0.72rem;'
     'color:#FF9800;font-weight:700;margin-bottom:0.4rem;">FILTERS</p>',

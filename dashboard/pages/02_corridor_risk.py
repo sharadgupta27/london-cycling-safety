@@ -58,8 +58,6 @@ st.sidebar.markdown("""
   <div style="color:#333; font-size:0.66rem; text-align:center;">Composite risk · journey volume</div>
 </div>
 """, unsafe_allow_html=True)
-st.sidebar.page_link("app.py", label="🏠 Home", use_container_width=True)
-st.sidebar.markdown("<hr style='border-color:#222; margin:0.4rem 0;'>", unsafe_allow_html=True)
 st.sidebar.markdown(
     '<p style="text-transform:uppercase;letter-spacing:0.07em;font-size:0.72rem;'
     'color:#FF9800;font-weight:700;margin-bottom:0.4rem;">FILTERS</p>',
@@ -106,19 +104,6 @@ if len(df) > 0:
         )
 
 
-
-# Risk distribution note: the top-N corridors by composite score are nearly
-# all 'Very High' risk.  Deselect 'Very High' in Risk Category (sidebar) or
-# lower 'Show top N' to explore other risk categories.
-if len(df) > 0:
-    _dist = df["risk_category"].value_counts()
-    if _dist.get("High", 0) + _dist.get("Medium", 0) + _dist.get("Low", 0) == 0:
-        st.info(
-            "All displayed corridors are Very High risk -- this is expected: "
-            "the top corridors by composite score all fall in the worst category. "
-            "Deselect Very High in the Risk Category filter (left sidebar) "
-            "to explore High / Medium / Low corridors.",
-        )
 
 # -- Two-column layout -------------------------------------------------------
 map_col, side_col = st.columns([3, 2], gap="small")

@@ -144,7 +144,7 @@ WHERE start_station_id IS NOT NULL
   AND end_station_id   IS NOT NULL
   AND start_station_id <> end_station_id
 GROUP BY 1, 2
-HAVING COUNT(*) >= 10
+HAVING COUNT(*) >= 100  -- minimum exposure: exclude corridors with < 100 journeys
 ORDER BY journey_count DESC;
 """
 
@@ -197,14 +197,19 @@ SELECT
     cc.*,
     COALESCE(ca.corridor_accident_count, 0) AS corridor_accident_count,
     COALESCE(ca.corridor_risk_raw, 0)       AS corridor_risk_raw,
-    -- normalise: accidents per km of corridor
+    -- normalise: severity-weighted accidents per km of corridor
     CASE WHEN cc.length_m > 0
          THEN COALESCE(ca.corridor_risk_raw, 0) / (cc.length_m / 1000.0)
          ELSE 0
     END                                     AS risk_per_km,
-    -- composite score weighting risk and journey volume
-    (COALESCE(ca.corridor_risk_raw, 0) * LOG(cc.journey_count + 1))
-                                            AS composite_risk_score
+    -- exposure-normalised risk: severity-weighted crashes per million journey-km
+    -- Formula: Risk = severity_crashes / (length_km × journey_count) × 1,000,000
+    -- Uses journey_count as AADT proxy; dividing by exposure avoids inflating
+    -- scores for high-volume corridors (replaces old: raw × ln(journeys+1))
+    CASE WHEN cc.length_m > 0 AND cc.journey_count > 0
+         THEN (COALESCE(ca.corridor_risk_raw, 0) / (cc.length_m / 1000.0 * cc.journey_count)) * 1000000
+         ELSE 0
+    END                                     AS composite_risk_score
 FROM corridor_coords cc
 LEFT JOIN corridor_accidents ca
        ON ca.station_a_id = cc.station_a_id

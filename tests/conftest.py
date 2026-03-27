@@ -176,3 +176,4 @@ def clean_env(monkeypatch):
     """Ensure tests don't accidentally read user's .env values."""
     monkeypatch.delenv("DESTINATION", raising=False)
     monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("DASHBOARD_TARGET", raising=False)

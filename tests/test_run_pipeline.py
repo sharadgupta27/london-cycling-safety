@@ -34,8 +34,8 @@ except ModuleNotFoundError:
     loguru_stub.logger = _l
     sys.modules.setdefault("loguru", loguru_stub)
 
-import run_pipeline
-from run_pipeline import _force_remove_dir, run_step
+import orchestration.pipeline as run_pipeline
+from orchestration.pipeline import _force_remove_dir, run_step
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ class TestStepIngestTfl:
             "ingestion": MagicMock(),
             "ingestion.ingest_tfl_cycling": MagicMock(run=mock_run),
         }):
-            run_pipeline.step_ingest_tfl()
+            run_pipeline.ingest_tfl()
         mock_run.assert_called_once()
 
     def test_propagates_exception(self):
@@ -116,7 +116,7 @@ class TestStepIngestTfl:
             "ingestion.ingest_tfl_cycling": mock_mod,
         }):
             with pytest.raises(RuntimeError, match="network error"):
-                run_pipeline.step_ingest_tfl()
+                run_pipeline.ingest_tfl()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ class TestStepIngestAccidents:
             "ingestion": MagicMock(),
             "ingestion.ingest_uk_accidents": MagicMock(run=mock_run),
         }):
-            run_pipeline.step_ingest_accidents()
+            run_pipeline.ingest_accidents()
         mock_run.assert_called_once()
 
     def test_propagates_exception(self):
@@ -141,7 +141,7 @@ class TestStepIngestAccidents:
             "ingestion.ingest_uk_accidents": mock_mod,
         }):
             with pytest.raises(RuntimeError):
-                run_pipeline.step_ingest_accidents()
+                run_pipeline.ingest_accidents()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

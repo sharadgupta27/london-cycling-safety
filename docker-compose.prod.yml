@@ -1,0 +1,49 @@
+# ==============================================================================
+# London Cycling Safety – Production overrides  (BigQuery)
+# ==============================================================================
+#
+# Extends docker-compose.yml for a production stack.
+# The pipeline ingests into and dbt models against BigQuery.
+# The dashboard reads from BigQuery.
+#
+# Prerequisites – all values must be set in .env:
+#   GOOGLE_APPLICATION_CREDENTIALS=/credentials/<key-filename>.json
+#   GCP_PROJECT_ID, GCP_BQ_DATASET, GCP_BQ_LOCATION
+#   DESTINATION__BIGQUERY__PROJECT_ID
+#   DESTINATION__BIGQUERY__LOCATION
+#   DESTINATION__BIGQUERY__CREDENTIALS__CLIENT_EMAIL
+#   LONDON_PROJECT_PATH   (absolute host path)
+#   CREDENTIALS_PATH      (absolute host path to credentials/ dir)
+#
+# Quick start:
+#   1. cp .env.example .env     # fill in ALL GCP + path variables
+#   2. Place service-account JSON in credentials/
+#   3. docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   4. docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#          run --rm pipeline
+#
+#   Dashboard → http://localhost:8501
+#
+#   For orchestrated runs (Airflow UI):
+#   cd airflow && docker compose up -d
+#   Airflow UI → http://localhost:8080  (admin / admin)
+#
+# Or use the Makefile shortcut:  make prod-up  /  make prod-run
+# ==============================================================================
+
+services:
+
+  # ── Dashboard – prod mode (reads from BigQuery) ───────────────────────────
+  dashboard:
+    environment:
+      DASHBOARD_TARGET: prod
+    volumes:
+      # Credentials needed for BigQuery authentication
+      - ./credentials:/credentials:ro
+
+  # ── Pipeline – prod mode (writes to BigQuery) ─────────────────────────────
+  pipeline:
+    command: ["python", "orchestration/pipeline.py", "--target", "prod"]
+    volumes:
+      - ./credentials:/credentials:ro
+      # dbt-packages: inherited from base (persists between pipeline runs)

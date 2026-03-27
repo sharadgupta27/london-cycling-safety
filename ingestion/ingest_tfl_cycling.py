@@ -18,8 +18,10 @@ from __future__ import annotations
 import io
 import os
 import re
+import shutil
 import sys
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator
@@ -39,6 +41,10 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 DUCKDB_PATH = os.getenv("DUCKDB_PATH", "london_cycling.duckdb")
 TFL_N_FILES = int(os.getenv("TFL_N_FILES", "12"))
+# Parallel download workers for TFL CSV files
+_DOWNLOAD_WORKERS = int(os.getenv("TFL_DOWNLOAD_WORKERS", "6"))
+# Rows per DataFrame chunk yielded to dlt (controls BQ upload batch granularity)
+_CHUNK_SIZE = int(os.getenv("INGEST_CHUNK_SIZE", "50000"))
 
 TFL_BASE_URL = "https://cycling.data.tfl.gov.uk/usage-stats/"
 FALLBACK_STATION_URL = (
@@ -212,6 +218,23 @@ def discover_tfl_csv_urls(n: int = TFL_N_FILES) -> list[str]:
     return []
 
 
+def _download_csvs_parallel(urls: list[str]) -> list[pd.DataFrame]:
+    """Download TFL journey CSVs concurrently and return DataFrames in URL order.
+
+    Uses a thread pool (size bounded by TFL_DOWNLOAD_WORKERS env var, default 6)
+    so multiple HTTP GETs run simultaneously instead of one-at-a-time.
+    """
+    results: dict[str, pd.DataFrame | None] = {}
+    workers = min(_DOWNLOAD_WORKERS, len(urls)) if urls else 1
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        future_to_url = {pool.submit(_download_csv, url): url for url in urls}
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
+            results[url] = future.result()
+    # Filter None (failed downloads) while preserving URL order for determinism
+    return [results[url] for url in urls if results.get(url) is not None]
+
+
 def _normalise_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Rename columns to snake_case standard names."""
     df = df.rename(columns={c: COLUMN_MAP.get(c, c.lower().replace(" ", "_")) for c in df.columns})
@@ -232,14 +255,39 @@ def _download_csv(url: str) -> pd.DataFrame | None:
         if missing:
             logger.warning("Skipping {} – missing columns: {}", url.split("/")[-1], missing)
             return None
-        # Parse datetimes
+        # Parse datetimes as UTC microseconds: Arrow emits timestamp[us, tz=UTC],
+        # which is exactly what dlt's "timestamp" + timezone=True column hint
+        # expects.  Using nanoseconds (the pandas default) or a naïve datetime
+        # produces a hint that differs from the stored dlt schema and triggers
+        # the "column hints were different" warning.
         for col in ("start_date", "end_date"):
             if col in df.columns:
-                df[col] = pd.to_datetime(df[col], format="%Y-%m-%d %H:%M", errors="coerce")
+                df[col] = (
+                    pd.to_datetime(df[col], format="%Y-%m-%d %H:%M", errors="coerce")
+                    .dt.tz_localize("UTC")
+                    .dt.as_unit("us")  # microseconds – matches dlt Arrow timestamp[us, tz=UTC]
+                )
         # Coerce numeric columns
-        for col in ("start_lon", "start_lat", "end_lon", "end_lat", "duration_seconds"):
+        # Columns listed as float64 can be null across files; keeping them as
+        # float64 consistently avoids dlt schema-mismatch errors when some files
+        # infer int64 (no nulls) and others infer float64 (nulls present).
+        for col in ("start_lon", "start_lat", "end_lon", "end_lat",
+                    "duration_seconds", "duration_ms",
+                    "end_station_id", "start_station_id"):
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
+                df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
+        # rental_id is the primary key – must be a consistent int64 so Arrow
+        # always emits pa.int64() regardless of whether the file had NaN values
+        # (which would otherwise promote the column to float64).
+        if "rental_id" in df.columns:
+            df["rental_id"] = pd.to_numeric(df["rental_id"], errors="coerce")
+            df = df.dropna(subset=["rental_id"])
+            df["rental_id"] = df["rental_id"].astype("int64")
+        # bike_id can be purely numeric (classic bikes) or alphanumeric
+        # (e.g. "WSERV-12345" for e-bikes in the 2025+ TFL format).
+        # Storing as str keeps the Arrow schema stable across both formats.
+        if "bike_id" in df.columns:
+            df["bike_id"] = df["bike_id"].astype(str)
         # Filter to London bounding box (roughly) – only when coordinates are present
         if "start_lat" in df.columns and "start_lon" in df.columns:
             df = df[
@@ -323,28 +371,56 @@ def _extract_stations(df: pd.DataFrame) -> pd.DataFrame:
 @dlt.source(name="tfl_cycling")
 def tfl_cycling_source(n_files: int = TFL_N_FILES):
     urls = discover_tfl_csv_urls(n_files)
-    yield tfl_journeys_resource(urls)
-    yield tfl_stations_resource(urls)
+    # Download all CSV files once in parallel; share the DataFrames between
+    # both resources to eliminate the previous double-download.
+    dfs = _download_csvs_parallel(urls)
+    yield tfl_journeys_resource(dfs)
+    yield tfl_stations_resource(dfs)
 
 
-@dlt.resource(name="tfl_journeys", write_disposition="replace", primary_key="rental_id")
-def tfl_journeys_resource(urls: list[str]) -> Iterator[dict]:
-    for url in tqdm(urls, desc="Ingesting TFL journey files"):
-        df = _download_csv(url)
-        if df is None:
-            continue
-        logger.info("  → {} rows from {}", len(df), url.split("/")[-1])
-        for row in df.to_dict(orient="records"):
-            yield row
+# Explicit column schema for tfl_journeys.
+# Declaring types here means dlt uses these hints directly instead of inferring
+# them from Arrow and comparing against its stored schema – which is what
+# causes the "column hints were different" WARNING in extractors.py.
+_JOURNEY_COLUMNS = {
+    "rental_id":         {"data_type": "bigint",    "nullable": False},
+    "bike_id":           {"data_type": "text",      "nullable": True},
+    "bike_model":        {"data_type": "text",      "nullable": True},
+    "start_date":        {"data_type": "timestamp", "timezone": True, "nullable": True},
+    "end_date":          {"data_type": "timestamp", "timezone": True, "nullable": True},
+    "start_station_id":  {"data_type": "double",    "nullable": True},
+    "start_station_name":{"data_type": "text",      "nullable": True},
+    "start_lon":         {"data_type": "double",    "nullable": True},
+    "start_lat":         {"data_type": "double",    "nullable": True},
+    "end_station_id":    {"data_type": "double",    "nullable": True},
+    "end_station_name":  {"data_type": "text",      "nullable": True},
+    "end_lon":           {"data_type": "double",    "nullable": True},
+    "end_lat":           {"data_type": "double",    "nullable": True},
+    "duration_seconds":  {"data_type": "double",    "nullable": True},
+    "duration_ms":       {"data_type": "double",    "nullable": True},
+    "duration_text":     {"data_type": "text",      "nullable": True},
+    "source_file":       {"data_type": "text",      "nullable": True},
+}
+
+
+@dlt.resource(
+    name="tfl_journeys",
+    write_disposition="replace",
+    primary_key="rental_id",
+    columns=_JOURNEY_COLUMNS,
+)
+def tfl_journeys_resource(dfs: list[pd.DataFrame]) -> Iterator[pd.DataFrame]:
+    for df in tqdm(dfs, desc="Ingesting TFL journey files"):
+        logger.info("  → {} rows", len(df))
+        # Yield in fixed-size chunks so dlt can stream data to BQ in parallel
+        for start in range(0, len(df), _CHUNK_SIZE):
+            yield df.iloc[start : start + _CHUNK_SIZE]
 
 
 @dlt.resource(name="tfl_stations", write_disposition="replace")
-def tfl_stations_resource(urls: list[str]) -> Iterator[dict]:
+def tfl_stations_resource(dfs: list[pd.DataFrame]) -> Iterator[pd.DataFrame]:
     all_stations: list[pd.DataFrame] = []
-    for url in tqdm(urls, desc="Extracting station coordinates"):
-        df = _download_csv(url)
-        if df is None:
-            continue
+    for df in dfs:
         all_stations.append(_extract_stations(df))
     if all_stations:
         combined = (
@@ -367,8 +443,8 @@ def tfl_stations_resource(urls: list[str]) -> Iterator[dict]:
         logger.info("No coordinates in journey files – falling back to TFL BikePoint API")
         combined = _fetch_stations_from_bikepoint()
 
-    for row in combined.to_dict(orient="records"):
-        yield row
+    if not combined.empty:
+        yield combined
 
 
 # ── entrypoint ───────────────────────────────────────────────────────────────
@@ -392,14 +468,33 @@ def _build_destination():
 
 def run(n_files: int = TFL_N_FILES, db_path: str = DUCKDB_PATH) -> None:
     logger.info("=== TFL Santander Cycling Ingestion ===")
-    logger.info("Target DuckDB: {}  |  Files to ingest: {}", db_path, n_files)
+    _dest_label = os.getenv("DESTINATION", "duckdb").lower()
+    if _dest_label == "bigquery":
+        logger.info("Target BigQuery: {}  |  Files to ingest: {}",
+                    os.getenv("DESTINATION__BIGQUERY__PROJECT_ID", "?"), n_files)
+    else:
+        logger.info("Target DuckDB: {}  |  Files to ingest: {}", db_path, n_files)
+
+    is_bq = os.getenv("DESTINATION", "duckdb").lower() == "bigquery"
+
+    # One-time schema evolution: if RESET_SCHEMA=1, delete the dlt pipeline
+    # working directory to force schema rebuild from _JOURNEY_COLUMNS.
+    # This eliminates "column hints were different" warning after schema changes.
+    if os.getenv("RESET_SCHEMA", "").strip() in ("1", "true", "yes"):
+        import shutil
+        pipeline_dir = Path.home() / ".dlt" / "pipelines" / "tfl_cycling"
+        if pipeline_dir.exists():
+            logger.info("RESET_SCHEMA=1 → removing {}", pipeline_dir)
+            shutil.rmtree(pipeline_dir)
 
     pipeline = dlt.pipeline(
         pipeline_name="tfl_cycling",
         destination=_build_destination(),
         dataset_name="raw",
     )
-    load_info = pipeline.run(tfl_cycling_source(n_files=n_files))
+    # Parquet is 3-5× faster than the default jsonl format for BigQuery uploads
+    run_kwargs: dict = {"loader_file_format": "parquet"} if is_bq else {}
+    load_info = pipeline.run(tfl_cycling_source(n_files=n_files), **run_kwargs)
     logger.info("Load complete: {}", load_info)
 
 
