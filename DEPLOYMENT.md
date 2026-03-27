@@ -1,4 +1,4 @@
-# London Cycling Safety — Deployment Guide
+# London Cycling Safety - Deployment Guide
 
 Step-by-step instructions for anyone to run this project locally or deploy it in production.
 
@@ -16,10 +16,10 @@ Step-by-step instructions for anyone to run this project locally or deploy it in
    - 4.4 Run individual stages
    - 4.5 Launch the dashboard
 5. [Windows Batch File Workflow](#5-windows-batch-file-workflow)
-   - 5.1 Step 1 — Environment setup (`Step1_setup.bat`)
-   - 5.2 Step 2A — Development pipeline (`Step2_run_dev.bat`)
-   - 5.3 Step 2B — Production pipeline (`Step2_run_prod.bat`)
-6. [Production — BigQuery](#6-production--bigquery)
+   - 5.1 Step 1 - Environment setup (`Step1_setup.bat`)
+   - 5.2 Step 2A - Development pipeline (`Step2_run_dev.bat`)
+   - 5.3 Step 2B - Production pipeline (`Step2_run_prod.bat`)
+6. [Production - BigQuery](#6-production--bigquery)
    - 6.1 GCP prerequisites
    - 6.2 Configure `.env` and credentials
    - 6.3 Run the production pipeline
@@ -80,8 +80,8 @@ Install the following **before** proceeding.
 | Python | ≥ 3.11 | https://python.org |
 | uv | any | https://docs.astral.sh/uv/ |
 | Git | any | https://git-scm.com |
-| Google Cloud account | — | **only** for production / BigQuery option |
-| Docker Desktop | any | https://docs.docker.com/desktop/ — **only** for Airflow orchestration option |
+| Google Cloud account | - | **only** for production / BigQuery option |
+| Docker Desktop | any | https://docs.docker.com/desktop/ - **only** for Airflow orchestration option |
 
 Verify Python is installed:
 
@@ -105,7 +105,7 @@ cd london-cycling-safety
 
 ## 4. Local Development (DuckDB)
 
-Everything here runs **entirely on your laptop** — no cloud account needed.
+Everything here runs **entirely on your laptop** - no cloud account needed.
 
 ### 4.1 Create Python environment
 
@@ -138,7 +138,7 @@ Copy the example file and edit it:
 cp .env.example .env
 ```
 
-Open `.env` in any editor — the defaults work as-is, but you can customise:
+Open `.env` in any editor - the defaults work as-is, but you can customise:
 
 ```dotenv
 DUCKDB_PATH=london_cycling.duckdb   # where the local database lives
@@ -236,7 +236,7 @@ Step1_setup.bat        ← run once (or after a clean clone)
 
 ---
 
-### 5.1 Step 1 — Environment setup (`Step1_setup.bat`)
+### 5.1 Step 1 - Environment setup (`Step1_setup.bat`)
 
 **Double-click** `Step1_setup.bat`, or from a terminal:
 
@@ -257,7 +257,7 @@ Run this **once after cloning**, or again whenever `requirements.txt` changes.
 
 ---
 
-### 5.2 Step 2A — Development pipeline (`Step2_run_dev.bat`)
+### 5.2 Step 2A - Development pipeline (`Step2_run_dev.bat`)
 
 Runs the full local (DuckDB) pipeline and launches the Streamlit dashboard.  
 **No cloud account required.**
@@ -272,17 +272,17 @@ What it does:
 |---|---|
 | 1 | Ingests TFL + STATS19 data via dlt → local DuckDB |
 | 2 | Runs DuckDB spatial transforms (blackspot scores, corridor geometry) |
-| 3 | Runs `dbt build` — seeds → staging → intermediate → marts + tests |
+| 3 | Runs `dbt build` - seeds → staging → intermediate → marts + tests |
 | 4 | Launches Streamlit dashboard at **http://localhost:8501** |
 
 > Press **Ctrl+C** in the terminal window to stop the dashboard when done.
 
 ---
 
-### 5.3 Step 2B — Production pipeline (`Step2_run_prod.bat`)
+### 5.3 Step 2B - Production pipeline (`Step2_run_prod.bat`)
 
 Runs the full production pipeline writing to Google BigQuery.  
-**Requires GCP credentials** — see §6 for setup.
+**Requires GCP credentials** - see §6 for setup.
 
 ```bat
 Step2_run_prod.bat
@@ -304,27 +304,27 @@ What it does:
 
 ---
 
-## 6. Production — BigQuery
+## 6. Production - BigQuery
 
 This section runs the production pipeline writing to Google BigQuery.  
-No Docker needed — `orchestration/pipeline.py` handles everything.
+No Docker needed - `orchestration/pipeline.py` handles everything.
 
 ### 6.1 GCP prerequisites
 
 You need a Google Cloud project with billing enabled.
 
-**Step 1 — Enable APIs (run once):**
+**Step 1 - Enable APIs (run once):**
 ```bash
 gcloud services enable bigquery.googleapis.com bigquerystorage.googleapis.com
 ```
 
-**Step 2 — Create a service account:**
+**Step 2 - Create a service account:**
 ```bash
 gcloud iam service-accounts create london-cycling-pipeline \
   --display-name "London Cycling Pipeline"
 ```
 
-**Step 3 — Grant required roles:**
+**Step 3 - Grant required roles:**
 ```bash
 export PROJECT_ID=$(gcloud config get-value project)
 
@@ -337,13 +337,13 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
   --role="roles/bigquery.jobUser"
 ```
 
-**Step 4 — Download the key file:**
+**Step 4 - Download the key file:**
 ```bash
 gcloud iam service-accounts keys create credentials/service_account.json \
   --iam-account="london-cycling-pipeline@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
-> `credentials/` is in `.gitignore` — the key will not be committed.
+> `credentials/` is in `.gitignore` - the key will not be committed.
 
 ---
 
@@ -364,7 +364,7 @@ GCP_BQ_LOCATION=EU
 
 ### 6.3 Run the production pipeline
 
-**Windows — double-click** `Step2_run_prod.bat` (after running `Step1_setup.bat` once), or from a terminal:
+**Windows - double-click** `Step2_run_prod.bat` (after running `Step1_setup.bat` once), or from a terminal:
 
 ```bat
 Step2_run_prod.bat
@@ -389,30 +389,30 @@ Expected behaviour:
 | dbt build | `dbt deps` + `dbt build --target prod` (seeds → staging → marts + tests) |
 
 On success, [BigQuery console](https://console.cloud.google.com/bigquery) shows:
-- Dataset `raw` — `tfl_journeys`, `tfl_stations`, `uk_accidents`, `uk_casualties`, `uk_vehicles`
-- Dataset `dbt_london_cycling` — `mart_blackspot_analysis`, `mart_corridor_risk`, `mart_temporal_safety`
+- Dataset `raw` - `tfl_journeys`, `tfl_stations`, `uk_accidents`, `uk_casualties`, `uk_vehicles`
+- Dataset `dbt_london_cycling` - `mart_blackspot_analysis`, `mart_corridor_risk`, `mart_temporal_safety`
 
 ---
 
 ### 6.4 Scheduled runs
 
-**Option A — Python scheduler (blocks terminal):**
+**Option A - Python scheduler (blocks terminal):**
 ```bash
 python orchestration/schedule_pipeline.py --target prod
 # or
 make schedule
 ```
 
-**Option B — Windows Task Scheduler:**
+**Option B - Windows Task Scheduler:**
 1. Create a trigger: weekly, Monday, 03:00
 2. Action: Start a program → `run_prod.bat`
 
-**Option C — Linux / macOS cron:**
+**Option C - Linux / macOS cron:**
 ```bash
 0 3 * * 1  /path/to/.venv/bin/python /path/to/orchestration/pipeline.py --target prod >> pipeline.log 2>&1
 ```
 
-**Option D — Apache Airflow (Recommended — web UI, retries, history):**
+**Option D - Apache Airflow (Recommended - web UI, retries, history):**
 
 Airflow is the preferred approach for any environment with Docker. It provides a web UI,
 run history, automatic retries, and dedicated DAGs for full pipeline, backfill, and dbt refresh.
@@ -425,7 +425,7 @@ See **§7 Apache Airflow Orchestration** below for full setup instructions.
 
 [Apache Airflow](https://airflow.apache.org) is the recommended way to run and schedule the
 production pipeline. It provides a web UI, run history, retries, and parameterised DAGs for
-every workflow — replacing the fragile `schedule_pipeline.py / cron` approach.
+every workflow - replacing the fragile `schedule_pipeline.py / cron` approach.
 
 ### Prerequisites
 
@@ -580,7 +580,7 @@ london-cycling-safety/
 │
 ├── profiles.yml                    # dbt profiles (dev=DuckDB, prod=BigQuery)
 ├── dbt_project.yml                 # dbt project config
-├── packages.yml                    # dbt packages (empty — no external deps)
+├── packages.yml                    # dbt packages (empty - no external deps)
 ├── run_pipeline.py                 # single entry point for all stages
 ├── requirements.txt                # Python dependencies (local dev)
 ├── .env.example                    # environment variable template
@@ -597,7 +597,7 @@ london-cycling-safety/
 ### `tfl_stations: 0 rows`
 
 The oldest TFL CSV files (pre-2019) do not include latitude/longitude columns.  
-The pipeline handles this gracefully — journeys still load correctly.  
+The pipeline handles this gracefully - journeys still load correctly.  
 Station data is derived from newer files; if 0 rows appear, increase `TFL_N_FILES` in `.env`:
 ```dotenv
 TFL_N_FILES=50

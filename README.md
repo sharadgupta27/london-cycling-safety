@@ -20,6 +20,7 @@ An end-to-end data engineering project that identifies the most dangerous cyclin
 12. [Environment Variables Reference](#environment-variables-reference)
 13. [Datasets](#datasets)
 14. [Technology Stack](#technology-stack)
+15. [Acknowledgements](#-acknowledgements)
 
 ---
 
@@ -780,3 +781,16 @@ All data is downloaded fresh on each pipeline run - no large files are stored in
 | Spatial (cloud) | BigQuery GIS (`ST_GEOGPOINT`, `ST_DISTANCE`, `ST_DWITHIN`) | Same logic, BigQuery-native |
 | Orchestration | [dbt build](https://docs.getdbt.com/reference/commands/build) + Python + [Apache Airflow](https://airflow.apache.org) | `orchestration/pipeline.py` runs ingestion → `dbt build`; `airflow/` provides web UI scheduling with retries (recommended); `schedule_pipeline.py` available as a fallback |
 | Dashboard | [Streamlit](https://streamlit.io/) + [Folium](https://python-visualization.github.io/folium/) + [Plotly](https://plotly.com/) | Interactive maps and charts |
+
+---
+
+## 🤝 Acknowledgements
+
+Thanks to the [DataTalks.Club](https://datatalks.club/) community for providing a structured learning path and covering a wide stack of data engineering tools through the [Data Engineering Zoomcamp](https://github.com/DataTalksClub/data-engineering-zoomcamp).
+
+### Datasets
+
+| Dataset | Source |
+|---|---|
+| **TfL Santander Cycle Hire journey data** | [Transport for London (TfL) Open Data](https://cycling.data.tfl.gov.uk/) |
+| **STATS19 road accident data** | [UK Department for Transport (DfT) — Road Safety Data](https://www.data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data) |
